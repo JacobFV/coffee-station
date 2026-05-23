@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import sqlite3
 from contextlib import contextmanager
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Iterator
 
@@ -104,7 +104,7 @@ class Storage:
         with self.connect() as conn:
             conn.execute(
                 "update sessions set status=?, updated_at=? where id=?",
-                (status, datetime.utcnow().isoformat(), session_id),
+                (status, datetime.now(UTC).isoformat(), session_id),
             )
 
     def add_message(self, session_id: str, message: ChatMessage) -> ChatMessage:
@@ -120,7 +120,7 @@ class Storage:
                     json.dumps(message.metadata),
                 ),
             )
-            conn.execute("update sessions set updated_at=? where id=?", (datetime.utcnow().isoformat(), session_id))
+            conn.execute("update sessions set updated_at=? where id=?", (datetime.now(UTC).isoformat(), session_id))
         return message
 
     def list_messages(self, session_id: str, limit: int = 200) -> list[ChatMessage]:
