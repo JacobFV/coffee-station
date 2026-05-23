@@ -10,6 +10,7 @@ const els = {
   cameraSelect: document.getElementById("cameraSelect"),
   autoInclude: document.getElementById("autoInclude"),
   frequency: document.getElementById("frequency"),
+  displayFps: document.getElementById("displayFps"),
   applyCamera: document.getElementById("applyCamera"),
   scanCameras: document.getElementById("scanCameras"),
   stopRobot: document.getElementById("stopRobot"),
@@ -153,7 +154,7 @@ function setCameraStream() {
   if (state.activeCameraId === null || state.activeCameraId === undefined) {
     return;
   }
-  const fps = Math.max(1, Math.min(60, Number(els.frequency.value) || 30));
+  const fps = Math.max(1, Math.min(60, Number(els.displayFps.value) || 30));
   const url = `/api/cameras/${state.activeCameraId}/stream?fps=${encodeURIComponent(fps)}`;
   if (state.streamUrl === url && els.cameraFeed.src.endsWith(url)) {
     return;
@@ -182,6 +183,11 @@ function startPolling() {
 
 els.cameraSelect.addEventListener("change", async () => {
   state.activeCameraId = Number(els.cameraSelect.value);
+  state.streamUrl = null;
+  setCameraStream();
+});
+
+els.displayFps.addEventListener("change", () => {
   state.streamUrl = null;
   setCameraStream();
 });

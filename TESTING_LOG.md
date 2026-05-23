@@ -27,3 +27,4 @@
 - Restarted server on `127.0.0.1:8768` with diagnostics code:
   - `/api/hardware/diagnostics` returned `ready_for_lerobot=False`, 3 serial ports, 0 USB serial ports.
   - Tool `diagnose_hardware` returned the same result.
+- During desktop startup, observed the UI stream opened with `fps=1` because display FPS was incorrectly tied to agent auto-feed frequency. Fixed by adding a separate Display Hz control defaulting to `30`; Agent Hz still controls how often frames are inserted into the Gemini loop.
