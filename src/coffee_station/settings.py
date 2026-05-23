@@ -31,8 +31,6 @@ class Settings(BaseSettings):
     camera_fps: int = Field(default=30, alias="CAMERA_FPS")
 
     data_dir: Path = Field(default=Path.home() / ".coffee-station", alias="COFFEE_STATION_DATA_DIR")
-    host: str = Field(default="127.0.0.1", alias="HOST")
-    port: int = Field(default=8765, alias="PORT")
 
     @property
     def db_path(self) -> Path:

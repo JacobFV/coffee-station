@@ -4,85 +4,133 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Coffee Station</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/static/styles.css">
   </head>
   <body>
-    <div class="app-shell">
-      <main class="camera-stage">
-        <header class="topbar">
-          <div>
-            <h1>Coffee Station</h1>
-            <p id="robotStatus">Connecting</p>
-          </div>
-          <div class="camera-controls">
-            <select id="cameraSelect" aria-label="Camera"></select>
-            <label class="toggle">
-              <input id="autoInclude" type="checkbox" checked>
-              <span>Auto</span>
-            </label>
-            <label class="frequency">
-              <span>Agent Hz</span>
-              <input id="frequency" type="number" min="0" max="30" step="0.25" value="1">
-            </label>
-            <label class="frequency">
-              <span>Display Hz</span>
-              <input id="displayFps" type="number" min="1" max="60" step="1" value="30">
-            </label>
-            <button id="applyCamera" title="Apply camera feed settings">Apply</button>
-            <button id="scanCameras" title="Scan for cameras">Scan</button>
-            <button id="stopRobot" class="danger" title="Stop robot and cancel queued actions">Stop</button>
-          </div>
-        </header>
-        <section class="video-band">
-          <img id="cameraFeed" alt="Camera feed">
-          <div id="noFrame">No camera frame</div>
-        </section>
-      </main>
-      <aside class="sidebar">
-        <div class="session-toolbar">
-          <button id="newSession" title="New session">New</button>
-          <button id="pauseSession" title="Pause session">Pause</button>
-          <button id="resumeSession" title="Resume session">Resume</button>
-        </div>
-        <select id="sessionSelect" aria-label="Session"></select>
-        <details class="tool-panel">
-          <summary>Tools</summary>
-          <div class="tool-grid">
-            <select id="toolSelect" aria-label="Tool">
-              <option value="get_robot_state">Robot state</option>
-              <option value="diagnose_hardware">Hardware diagnostics</option>
-              <option value="scan_feetech_motors">Scan Feetech motors</option>
-              <option value="set_joint_pose">Set joint pose</option>
-              <option value="set_world_pose">Set world pose</option>
-              <option value="offset_world_pose">Offset world pose</option>
-              <option value="request_latest_frame">Latest frame</option>
-              <option value="bundle_tool_calls">Bundle calls</option>
-              <option value="list_agent_skills">List skills</option>
-              <option value="activate_agent_skill">Activate skill</option>
-              <option value="record_calibration_point">Record calibration</option>
-              <option value="get_calibration">Get calibration</option>
-              <option value="clear_calibration">Clear calibration</option>
-              <option value="cancel_queued_actions">Cancel queue</option>
-            </select>
-            <textarea id="toolArgs" rows="5" spellcheck="false">{}</textarea>
-            <button id="runTool" type="button">Run Tool</button>
-          </div>
-        </details>
-        <details class="skill-panel">
-          <summary>Skills</summary>
-          <div id="skillList" class="skill-list"></div>
-        </details>
-        <details class="queue-panel" open>
-          <summary>Queue</summary>
-          <div id="queueList" class="queue-list"></div>
-        </details>
-        <div id="messages" class="messages"></div>
-        <form id="chatForm" class="chat-form">
-          <textarea id="chatInput" rows="3" placeholder="Inject a message"></textarea>
-          <button type="submit">Send</button>
-        </form>
-      </aside>
+    <div class="stage">
+      <img id="cameraFeed" alt="Camera feed">
+      <div id="noFrame" class="empty-state">
+        <div class="empty-glyph"></div>
+        <div class="empty-title">Waiting for camera</div>
+        <div class="empty-sub">Connect a camera or open settings to scan</div>
+      </div>
+      <div class="stage-vignette"></div>
     </div>
+
+    <header class="topbar glass">
+      <div class="brand">
+        <div class="brand-mark"></div>
+        <div class="brand-text">
+          <div class="brand-name">Coffee Station</div>
+          <div class="brand-status">
+            <span id="statusDot" class="dot"></span>
+            <span id="robotStatus">Connecting</span>
+          </div>
+        </div>
+      </div>
+      <div class="topbar-actions">
+        <select id="sessionSelect" class="pill session-pill" aria-label="Session"></select>
+        <button id="newSession" class="icon-btn" title="New session" aria-label="New session">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        </button>
+        <button id="stopRobot" class="icon-btn stop-icon" title="Emergency stop" aria-label="Emergency stop" hidden>
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
+        </button>
+        <button id="settingsBtn" class="icon-btn" title="Settings" aria-label="Settings">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        </button>
+      </div>
+    </header>
+
+    <aside class="chat-dock glass">
+      <div class="chat-head">
+        <div class="chat-title">Conversation</div>
+        <div class="chat-controls">
+          <button id="sessionToggle" class="ghost-btn" title="Pause session">Pause</button>
+        </div>
+      </div>
+      <div id="messages" class="messages"></div>
+      <form id="chatForm" class="chat-form">
+        <textarea id="chatInput" rows="1" placeholder="Tell the robot what to do..."></textarea>
+        <button id="chatSend" type="submit" class="send-btn" aria-label="Send">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+        </button>
+      </form>
+    </aside>
+
+    <div id="queueChips" class="queue-chips"></div>
+
+    <div id="drawerScrim" class="drawer-scrim" hidden></div>
+    <aside id="drawer" class="drawer glass" hidden>
+      <div class="drawer-head">
+        <div class="drawer-title">Settings</div>
+        <button id="drawerClose" class="icon-btn" aria-label="Close">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+
+      <section class="drawer-section">
+        <div class="section-label">Camera</div>
+        <div class="row">
+          <select id="cameraSelect" class="pill" aria-label="Camera"></select>
+          <button id="scanCameras" class="ghost-btn">Scan</button>
+        </div>
+        <div class="row">
+          <label class="field">
+            <span>Agent Hz</span>
+            <input id="frequency" type="number" min="0" max="30" step="0.25" value="1">
+          </label>
+          <label class="field">
+            <span>Display Hz</span>
+            <input id="displayFps" type="number" min="1" max="60" step="1" value="30">
+          </label>
+          <label class="switch">
+            <input id="autoInclude" type="checkbox" checked>
+            <span class="slider"></span>
+            <span class="switch-label">Auto include</span>
+          </label>
+        </div>
+        <button id="applyCamera" class="primary-btn">Apply camera</button>
+      </section>
+
+      <section class="drawer-section">
+        <div class="section-label">Skills</div>
+        <div id="skillList" class="skill-list"></div>
+      </section>
+
+      <section class="drawer-section">
+        <div class="section-label">Queue</div>
+        <div id="queueList" class="queue-list"></div>
+      </section>
+
+      <details class="drawer-section advanced">
+        <summary class="section-label">Developer tools</summary>
+        <div class="tool-grid">
+          <select id="toolSelect" class="pill" aria-label="Tool">
+            <option value="get_robot_state">Robot state</option>
+            <option value="diagnose_hardware">Hardware diagnostics</option>
+            <option value="scan_feetech_motors">Scan Feetech motors</option>
+            <option value="set_joint_pose">Set joint pose</option>
+            <option value="set_world_pose">Set world pose</option>
+            <option value="offset_world_pose">Offset world pose</option>
+            <option value="request_latest_frame">Latest frame</option>
+            <option value="bundle_tool_calls">Bundle calls</option>
+            <option value="list_agent_skills">List skills</option>
+            <option value="activate_agent_skill">Activate skill</option>
+            <option value="record_calibration_point">Record calibration</option>
+            <option value="get_calibration">Get calibration</option>
+            <option value="clear_calibration">Clear calibration</option>
+            <option value="cancel_queued_actions">Cancel queue</option>
+          </select>
+          <textarea id="toolArgs" rows="6" spellcheck="false">{}</textarea>
+          <button id="runTool" class="primary-btn" type="button">Run tool</button>
+        </div>
+      </details>
+    </aside>
+
     <script src="/static/app.js"></script>
   </body>
 </html>
