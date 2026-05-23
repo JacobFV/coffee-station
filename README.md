@@ -5,10 +5,12 @@ Coffee Station is a local Python desktop harness for a USB Hugging Face LeRobot 
 - Gemini tool calls for direct joint-pose control.
 - IK-based world-space target and relative-offset tool calls.
 - Scheduled bundles of tool calls with per-call time offsets.
+- Queue inspection and cancellation for scheduled calls.
 - Multi-camera OpenCV capture with configurable automatic frame injection into the agent loop.
+- Camera device scanning, enable/disable, auto-feed frequency, and latest-frame requests.
 - Manual latest-frame requests.
 - Local session storage in SQLite.
-- A local desktop-style UI with the active camera feed, session controls, pause/resume, and an autonomous agent chat sidebar.
+- A local desktop-style UI with the active camera feed, session controls, queue controls, manual tool execution, pause/resume, robot stop, and an autonomous agent chat sidebar.
 
 The current default model is `gemini-flash-latest`, which follows Google AI's latest Flash alias. Override it with `GEMINI_MODEL` when you want a pinned stable model.
 
@@ -52,7 +54,32 @@ export LEROBOT_TYPE=so100_follower
 export GEMINI_MODEL=gemini-flash-latest
 ```
 
+If LeRobot action keys cannot be inferred from `robot.action_features`, configure them explicitly in hardware order:
+
+```bash
+export LEROBOT_ACTION_KEYS="shoulder_pan.pos,shoulder_lift.pos,elbow_flex.pos,wrist_flex.pos,wrist_roll.pos,gripper.pos"
+```
+
+Optional safety limits are JSON `[min, max]` degree pairs matching the joint command order:
+
+```bash
+export ROBOT_JOINT_LIMITS_JSON='[[-90,90],[-90,45],[-120,120],[-120,120],[-180,180],[0,100]]'
+```
+
 If the robot cannot connect, the app refuses movement commands for the LeRobot backend. Use `ROBOT_BACKEND=sim` for development without hardware.
+
+## Tool Surface
+
+The Gemini harness and UI expose these tools:
+
+- `set_joint_pose`: direct joint command in degrees, with optional `schedule_offset_s`.
+- `set_world_pose`: IK target in world meters/degrees, with optional `schedule_offset_s`.
+- `offset_world_pose`: IK relative move from the last world pose, with optional `schedule_offset_s`.
+- `bundle_tool_calls`: schedules multiple calls using per-call `offset_s`.
+- `configure_camera_feed`: enables a camera and sets automatic frame inclusion frequency.
+- `discover_cameras`, `list_cameras`, `request_latest_frame`.
+- `list_scheduled_actions`, `cancel_scheduled_action`, `cancel_queued_actions`.
+- `get_robot_state`, `stop_robot`, `pause_session`, `resume_session`.
 
 ## Safety
 

@@ -22,9 +22,11 @@
             </label>
             <label class="frequency">
               <span>Hz</span>
-              <input id="frequency" type="number" min="0" max="30" step="0.25" value="1">
+            <input id="frequency" type="number" min="0" max="30" step="0.25" value="1">
             </label>
             <button id="applyCamera" title="Apply camera feed settings">Apply</button>
+            <button id="scanCameras" title="Scan for cameras">Scan</button>
+            <button id="stopRobot" class="danger" title="Stop robot and cancel queued actions">Stop</button>
           </div>
         </header>
         <section class="video-band">
@@ -39,6 +41,26 @@
           <button id="resumeSession" title="Resume session">Resume</button>
         </div>
         <select id="sessionSelect" aria-label="Session"></select>
+        <details class="tool-panel">
+          <summary>Tools</summary>
+          <div class="tool-grid">
+            <select id="toolSelect" aria-label="Tool">
+              <option value="get_robot_state">Robot state</option>
+              <option value="set_joint_pose">Set joint pose</option>
+              <option value="set_world_pose">Set world pose</option>
+              <option value="offset_world_pose">Offset world pose</option>
+              <option value="request_latest_frame">Latest frame</option>
+              <option value="bundle_tool_calls">Bundle calls</option>
+              <option value="cancel_queued_actions">Cancel queue</option>
+            </select>
+            <textarea id="toolArgs" rows="5" spellcheck="false">{}</textarea>
+            <button id="runTool" type="button">Run Tool</button>
+          </div>
+        </details>
+        <details class="queue-panel" open>
+          <summary>Queue</summary>
+          <div id="queueList" class="queue-list"></div>
+        </details>
         <div id="messages" class="messages"></div>
         <form id="chatForm" class="chat-form">
           <textarea id="chatInput" rows="3" placeholder="Inject a message"></textarea>

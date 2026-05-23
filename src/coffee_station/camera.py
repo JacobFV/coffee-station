@@ -98,6 +98,28 @@ class CameraManager:
     def list_configs(self) -> list[CameraConfig]:
         return [device.config for device in self.devices.values()]
 
+    def discover(self) -> list[dict[str, Any]]:
+        discovered: list[dict[str, Any]] = []
+        max_index = max(self.settings.camera_discovery_max_index, max(self.devices.keys(), default=0))
+        for camera_id in range(max_index + 1):
+            cap = cv2.VideoCapture(camera_id)
+            opened = cap.isOpened()
+            width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)) if opened else 0
+            height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)) if opened else 0
+            cap.release()
+            if opened and camera_id not in self.devices:
+                self.devices[camera_id] = CameraDevice(CameraConfig(camera_id=camera_id, enabled=False), self.settings)
+            discovered.append(
+                {
+                    "camera_id": camera_id,
+                    "available": opened,
+                    "configured": camera_id in self.devices,
+                    "width": width,
+                    "height": height,
+                }
+            )
+        return discovered
+
     def configure(self, camera_id: int, enabled: bool | None = None, auto_include: bool | None = None,
                   frequency_hz: float | None = None, label: str | None = None) -> dict[str, Any]:
         with self.lock:
@@ -116,6 +138,20 @@ class CameraManager:
             if label is not None:
                 device.config.label = label
             return {"camera": device.config.model_dump(), "open_error": device.open_error}
+
+    def status(self) -> list[dict[str, Any]]:
+        statuses: list[dict[str, Any]] = []
+        for device in self.devices.values():
+            latest = device.latest.info(include_bytes=False).model_dump() if device.latest else None
+            statuses.append(
+                {
+                    "camera": device.config.model_dump(),
+                    "open": device.capture is not None,
+                    "open_error": device.open_error,
+                    "latest_frame": latest,
+                }
+            )
+        return statuses
 
     def latest_frame(self, camera_id: int, include_bytes: bool = True, refresh: bool = True) -> FrameInfo | None:
         device = self.devices.get(camera_id)

@@ -105,6 +105,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             camera_configs=state.storage.list_camera_configs(session_id) or state.cameras.list_configs(),
             robot_state=state.robot.state(),
             queued_actions=state.storage.queued_actions(session_id),
+            recent_actions=state.storage.list_actions(session_id, limit=50),
         )
 
     @app.post("/api/sessions/{session_id}/activate")
@@ -134,7 +135,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.get("/api/cameras")
     def list_cameras() -> dict[str, Any]:
-        return {"cameras": [camera.model_dump() for camera in state.cameras.list_configs()]}
+        return {"cameras": state.cameras.status()}
+
+    @app.post("/api/cameras/discover")
+    def discover_cameras() -> dict[str, Any]:
+        discovered = state.cameras.discover()
+        if state.agent.active_session_id:
+            for config in state.cameras.list_configs():
+                state.storage.upsert_camera_config(state.agent.active_session_id, config)
+        return {"discovered": discovered, "cameras": state.cameras.status()}
 
     @app.post("/api/cameras/configure")
     def configure_camera(request: CameraConfigureRequest) -> dict[str, Any]:
@@ -174,6 +183,36 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             ChatMessage(role="tool", content=f"{request.tool_name}: {result}", metadata={"manual": True, "result": result}),
         )
         return {"result": result}
+
+    @app.get("/api/sessions/{session_id}/actions")
+    def list_actions(session_id: str) -> dict[str, Any]:
+        if not state.storage.get_session(session_id):
+            raise HTTPException(status_code=404, detail="session not found")
+        return {
+            "queued_actions": [action.model_dump() for action in state.storage.queued_actions(session_id)],
+            "recent_actions": [action.model_dump() for action in state.storage.list_actions(session_id, limit=100)],
+        }
+
+    @app.post("/api/sessions/{session_id}/actions/{action_id}/cancel")
+    def cancel_action(session_id: str, action_id: str) -> dict[str, Any]:
+        if not state.storage.get_session(session_id):
+            raise HTTPException(status_code=404, detail="session not found")
+        action = state.storage.cancel_action(action_id)
+        if action is None:
+            raise HTTPException(status_code=404, detail="action not found")
+        return {"action": action.model_dump()}
+
+    @app.post("/api/sessions/{session_id}/actions/cancel-queued")
+    def cancel_queued_actions(session_id: str) -> dict[str, Any]:
+        if not state.storage.get_session(session_id):
+            raise HTTPException(status_code=404, detail="session not found")
+        return {"canceled": state.storage.cancel_queued_actions(session_id)}
+
+    @app.post("/api/robot/stop/{session_id}")
+    def stop_robot(session_id: str) -> dict[str, Any]:
+        if not state.storage.get_session(session_id):
+            raise HTTPException(status_code=404, detail="session not found")
+        return state.tools.stop_robot(session_id)
 
     @app.post("/api/agent/step/{session_id}")
     async def manual_step(session_id: str) -> dict[str, Any]:

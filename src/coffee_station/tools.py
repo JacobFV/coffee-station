@@ -24,7 +24,12 @@ class ToolRegistry:
             "configure_camera_feed": self.configure_camera_feed,
             "request_latest_frame": self.request_latest_frame,
             "list_cameras": self.list_cameras,
+            "discover_cameras": self.discover_cameras,
             "get_robot_state": self.get_robot_state,
+            "stop_robot": self.stop_robot,
+            "list_scheduled_actions": self.list_scheduled_actions,
+            "cancel_scheduled_action": self.cancel_scheduled_action,
+            "cancel_queued_actions": self.cancel_queued_actions,
             "pause_session": self.pause_session,
             "resume_session": self.resume_session,
         }
@@ -130,12 +135,41 @@ class ToolRegistry:
             ),
             types.FunctionDeclaration(
                 name="list_cameras",
-                description="List currently configured camera devices and automatic agent-loop feed settings.",
+                description="List currently configured camera devices, frame status, and automatic agent-loop feed settings.",
+                parameters={"type": "object", "properties": {}},
+            ),
+            types.FunctionDeclaration(
+                name="discover_cameras",
+                description="Scan local device camera indexes and add available cameras to the configurable device list.",
                 parameters={"type": "object", "properties": {}},
             ),
             types.FunctionDeclaration(
                 name="get_robot_state",
                 description="Return the current robot backend state, latest world pose, queued movement context, and connection status.",
+                parameters={"type": "object", "properties": {}},
+            ),
+            types.FunctionDeclaration(
+                name="stop_robot",
+                description="Immediately stop the robot backend when supported. On basic LeRobot backends this may disconnect the robot.",
+                parameters={"type": "object", "properties": {}},
+            ),
+            types.FunctionDeclaration(
+                name="list_scheduled_actions",
+                description="List queued and recent scheduled actions for this session.",
+                parameters={"type": "object", "properties": {"limit": {"type": "integer"}}},
+            ),
+            types.FunctionDeclaration(
+                name="cancel_scheduled_action",
+                description="Cancel one queued scheduled action by id.",
+                parameters={
+                    "type": "object",
+                    "properties": {"action_id": {"type": "string"}},
+                    "required": ["action_id"],
+                },
+            ),
+            types.FunctionDeclaration(
+                name="cancel_queued_actions",
+                description="Cancel all queued scheduled actions for this session.",
                 parameters={"type": "object", "properties": {}},
             ),
             types.FunctionDeclaration(
@@ -154,7 +188,21 @@ class ToolRegistry:
         if tool_name not in self._tools:
             raise ValueError(f"unknown tool: {tool_name}")
         schedule_offset_s = float(args.pop("schedule_offset_s", 0.0) or 0.0)
-        if schedule_offset_s > 0 and tool_name not in {"bundle_tool_calls", "configure_camera_feed", "request_latest_frame", "list_cameras", "get_robot_state", "pause_session", "resume_session"}:
+        immediate_only = {
+            "bundle_tool_calls",
+            "configure_camera_feed",
+            "request_latest_frame",
+            "list_cameras",
+            "discover_cameras",
+            "get_robot_state",
+            "stop_robot",
+            "list_scheduled_actions",
+            "cancel_scheduled_action",
+            "cancel_queued_actions",
+            "pause_session",
+            "resume_session",
+        }
+        if schedule_offset_s > 0 and tool_name not in immediate_only:
             action = self.schedule(session_id, tool_name, args, schedule_offset_s)
             return {"scheduled": action.model_dump()}
         return self._tools[tool_name](session_id=session_id, **args)
@@ -174,8 +222,7 @@ class ToolRegistry:
         due = self.storage.due_actions(time.time())
         completed: list[ScheduledAction] = []
         for action in due:
-            action.status = "running"
-            self.storage.save_action(action)
+            self.storage.update_action_status(action.id, "running")
             try:
                 action.result = self.dispatch(action.session_id, action.tool_name, dict(action.args))
                 action.status = "done"
@@ -235,10 +282,32 @@ class ToolRegistry:
         return {"frame": None if frame is None else frame.model_dump()}
 
     def list_cameras(self, session_id: str) -> dict[str, Any]:
-        return {"cameras": [config.model_dump() for config in self.cameras.list_configs()]}
+        return {"cameras": self.cameras.status()}
+
+    def discover_cameras(self, session_id: str) -> dict[str, Any]:
+        discovered = self.cameras.discover()
+        for config in self.cameras.list_configs():
+            self.storage.upsert_camera_config(session_id, config)
+        return {"discovered": discovered, "cameras": self.cameras.status()}
 
     def get_robot_state(self, session_id: str) -> dict[str, Any]:
         return self.robot.state()
+
+    def stop_robot(self, session_id: str) -> dict[str, Any]:
+        canceled = self.storage.cancel_queued_actions(session_id)
+        result = self.robot.stop()
+        result["canceled_queued_actions"] = canceled
+        return result
+
+    def list_scheduled_actions(self, session_id: str, limit: int = 100) -> dict[str, Any]:
+        return {"actions": [action.model_dump() for action in self.storage.list_actions(session_id, limit=limit)]}
+
+    def cancel_scheduled_action(self, session_id: str, action_id: str) -> dict[str, Any]:
+        action = self.storage.cancel_action(action_id)
+        return {"action": None if action is None else action.model_dump()}
+
+    def cancel_queued_actions(self, session_id: str) -> dict[str, Any]:
+        return {"canceled": self.storage.cancel_queued_actions(session_id)}
 
     def pause_session(self, session_id: str) -> dict[str, Any]:
         self.storage.update_session_status(session_id, "paused")

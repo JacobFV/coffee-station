@@ -38,7 +38,7 @@ class ScheduledAction(BaseModel):
     args: dict[str, Any]
     due_at: float
     created_at: float
-    status: Literal["queued", "running", "done", "failed"] = "queued"
+    status: Literal["queued", "running", "done", "failed", "canceled"] = "queued"
     result: dict[str, Any] | None = None
     error: str | None = None
 
@@ -82,3 +82,4 @@ class SessionSnapshot(BaseModel):
     camera_configs: list[CameraConfig]
     robot_state: dict[str, Any]
     queued_actions: list[ScheduledAction]
+    recent_actions: list[ScheduledAction]

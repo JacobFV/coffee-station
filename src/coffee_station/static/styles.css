@@ -49,6 +49,11 @@ button:hover {
   border-color: var(--accent);
 }
 
+button.danger {
+  border-color: #6d3333;
+  color: #ffd6d6;
+}
+
 .app-shell {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 380px;
@@ -140,12 +145,75 @@ button:hover {
 
 .sidebar {
   display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  grid-template-rows: auto auto auto auto minmax(0, 1fr) auto;
   gap: 10px;
   min-width: 0;
   border-left: 1px solid var(--line);
   background: var(--panel);
   padding: 12px;
+}
+
+.tool-panel,
+.queue-panel {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #111318;
+}
+
+.tool-panel summary,
+.queue-panel summary {
+  cursor: pointer;
+  padding: 8px 10px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.tool-grid {
+  display: grid;
+  gap: 8px;
+  padding: 0 8px 8px;
+}
+
+.tool-grid select {
+  height: 34px;
+}
+
+.tool-grid textarea {
+  min-width: 0;
+  padding: 8px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.queue-list {
+  display: grid;
+  gap: 6px;
+  max-height: 132px;
+  overflow: auto;
+  padding: 0 8px 8px;
+}
+
+.queue-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  border-top: 1px solid #262a33;
+  padding-top: 6px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.queue-item strong {
+  display: block;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+.queue-item button {
+  height: 28px;
+  padding: 0 8px;
 }
 
 .session-toolbar {

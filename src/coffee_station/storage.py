@@ -192,6 +192,43 @@ class Storage:
             )
         return action
 
+    def update_action_status(
+        self,
+        action_id: str,
+        status: str,
+        result: dict | None = None,
+        error: str | None = None,
+    ) -> ScheduledAction | None:
+        with self.connect() as conn:
+            conn.execute(
+                "update actions set status=?, result=?, error=? where id=?",
+                (
+                    status,
+                    json.dumps(result) if result is not None else None,
+                    error,
+                    action_id,
+                ),
+            )
+            row = conn.execute("select * from actions where id=?", (action_id,)).fetchone()
+        return None if row is None else self._action_from_row(row)
+
+    def cancel_action(self, action_id: str) -> ScheduledAction | None:
+        with self.connect() as conn:
+            conn.execute(
+                "update actions set status='canceled', error='canceled by operator' where id=? and status in ('queued', 'running')",
+                (action_id,),
+            )
+            row = conn.execute("select * from actions where id=?", (action_id,)).fetchone()
+        return None if row is None else self._action_from_row(row)
+
+    def cancel_queued_actions(self, session_id: str) -> int:
+        with self.connect() as conn:
+            cursor = conn.execute(
+                "update actions set status='canceled', error='canceled by operator' where session_id=? and status='queued'",
+                (session_id,),
+            )
+            return cursor.rowcount
+
     def due_actions(self, now: float) -> list[ScheduledAction]:
         with self.connect() as conn:
             rows = conn.execute(
@@ -205,6 +242,14 @@ class Storage:
             rows = conn.execute(
                 "select * from actions where session_id=? and status in ('queued', 'running') order by due_at asc",
                 (session_id,),
+            ).fetchall()
+        return [self._action_from_row(row) for row in rows]
+
+    def list_actions(self, session_id: str, limit: int = 100) -> list[ScheduledAction]:
+        with self.connect() as conn:
+            rows = conn.execute(
+                "select * from actions where session_id=? order by created_at desc limit ?",
+                (session_id, limit),
             ).fetchall()
         return [self._action_from_row(row) for row in rows]
 

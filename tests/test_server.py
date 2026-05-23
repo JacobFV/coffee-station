@@ -19,3 +19,9 @@ def test_session_api_lifecycle(tmp_path):
 
         paused = client.post(f"/api/sessions/{session_id}/status", json={"status": "paused"}).json()
         assert paused["session"]["status"] == "paused"
+
+        cameras = client.get("/api/cameras").json()
+        assert "camera" in cameras["cameras"][0]
+
+        actions = client.get(f"/api/sessions/{session_id}/actions").json()
+        assert actions["queued_actions"] == []

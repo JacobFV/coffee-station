@@ -11,12 +11,18 @@ const els = {
   autoInclude: document.getElementById("autoInclude"),
   frequency: document.getElementById("frequency"),
   applyCamera: document.getElementById("applyCamera"),
+  scanCameras: document.getElementById("scanCameras"),
+  stopRobot: document.getElementById("stopRobot"),
   cameraFeed: document.getElementById("cameraFeed"),
   noFrame: document.getElementById("noFrame"),
   newSession: document.getElementById("newSession"),
   pauseSession: document.getElementById("pauseSession"),
   resumeSession: document.getElementById("resumeSession"),
   sessionSelect: document.getElementById("sessionSelect"),
+  toolSelect: document.getElementById("toolSelect"),
+  toolArgs: document.getElementById("toolArgs"),
+  runTool: document.getElementById("runTool"),
+  queueList: document.getElementById("queueList"),
   messages: document.getElementById("messages"),
   chatForm: document.getElementById("chatForm"),
   chatInput: document.getElementById("chatInput")
@@ -60,6 +66,7 @@ async function refreshSession(sessionId) {
   state.activeSessionId = sessionId;
   els.robotStatus.textContent = `${snapshot.robot_state.backend} ${snapshot.robot_state.connected ? "connected" : "offline"} - ${snapshot.session.status}`;
   renderMessages(snapshot.messages);
+  renderQueue(snapshot.queued_actions || []);
 }
 
 function renderMessages(messages) {
@@ -82,17 +89,45 @@ function renderMessages(messages) {
   }
 }
 
+function renderQueue(actions) {
+  els.queueList.innerHTML = "";
+  if (actions.length === 0) {
+    const empty = document.createElement("div");
+    empty.className = "queue-item";
+    empty.textContent = "No queued actions";
+    els.queueList.appendChild(empty);
+    return;
+  }
+  for (const action of actions) {
+    const row = document.createElement("div");
+    row.className = "queue-item";
+    const due = new Date(action.due_at * 1000).toLocaleTimeString();
+    const label = document.createElement("div");
+    label.innerHTML = `<strong>${action.tool_name}</strong><span>${action.status} at ${due}</span>`;
+    const cancel = document.createElement("button");
+    cancel.type = "button";
+    cancel.textContent = "Cancel";
+    cancel.addEventListener("click", async () => {
+      await api(`/api/sessions/${state.activeSessionId}/actions/${action.id}/cancel`, { method: "POST", body: "{}" });
+      await refreshSession(state.activeSessionId);
+    });
+    row.append(label, cancel);
+    els.queueList.appendChild(row);
+  }
+}
+
 async function refreshCameras() {
   const data = await api("/api/cameras");
   els.cameraSelect.innerHTML = "";
-  for (const camera of data.cameras) {
+  for (const status of data.cameras) {
+    const camera = status.camera;
     const option = document.createElement("option");
     option.value = camera.camera_id;
     option.textContent = camera.label || `Camera ${camera.camera_id}`;
     els.cameraSelect.appendChild(option);
   }
   if (data.cameras.length > 0) {
-    const camera = data.cameras[0];
+    const camera = data.cameras[0].camera;
     state.activeCameraId = camera.camera_id;
     els.cameraSelect.value = String(camera.camera_id);
     els.autoInclude.checked = camera.auto_include;
@@ -134,6 +169,17 @@ function startPolling() {
 els.cameraSelect.addEventListener("change", async () => {
   state.activeCameraId = Number(els.cameraSelect.value);
   refreshFrame();
+});
+
+els.scanCameras.addEventListener("click", async () => {
+  await api("/api/cameras/discover", { method: "POST", body: "{}" });
+  await refreshCameras();
+});
+
+els.stopRobot.addEventListener("click", async () => {
+  if (!state.activeSessionId) return;
+  await api(`/api/robot/stop/${state.activeSessionId}`, { method: "POST", body: "{}" });
+  await refreshSession(state.activeSessionId);
 });
 
 els.applyCamera.addEventListener("click", async () => {
@@ -188,6 +234,44 @@ els.chatForm.addEventListener("submit", async (event) => {
   await api(`/api/sessions/${state.activeSessionId}/messages`, {
     method: "POST",
     body: JSON.stringify({ content })
+  });
+  await refreshSession(state.activeSessionId);
+});
+
+els.toolSelect.addEventListener("change", () => {
+  const examples = {
+    get_robot_state: {},
+    set_joint_pose: { joints: [0, -25, 35, -10, 0, 0], duration_s: 0.5 },
+    set_world_pose: { x: 0.18, y: 0, z: 0.14, pitch: -25, duration_s: 0.5 },
+    offset_world_pose: { dx: 0.01, dy: 0, dz: 0, duration_s: 0.25 },
+    request_latest_frame: { camera_id: state.activeCameraId || 0, refresh: true },
+    bundle_tool_calls: {
+      calls: [
+        { tool_name: "offset_world_pose", args: { dz: 0.02, duration_s: 0.25 }, offset_s: 0 },
+        { tool_name: "offset_world_pose", args: { dz: -0.02, duration_s: 0.25 }, offset_s: 1 }
+      ]
+    },
+    cancel_queued_actions: {}
+  };
+  els.toolArgs.value = JSON.stringify(examples[els.toolSelect.value] || {}, null, 2);
+});
+
+els.runTool.addEventListener("click", async () => {
+  if (!state.activeSessionId) return;
+  let args = {};
+  try {
+    args = JSON.parse(els.toolArgs.value || "{}");
+  } catch (error) {
+    alert(`Invalid JSON: ${error.message}`);
+    return;
+  }
+  await api("/api/tools/call", {
+    method: "POST",
+    body: JSON.stringify({
+      session_id: state.activeSessionId,
+      tool_name: els.toolSelect.value,
+      args
+    })
   });
   await refreshSession(state.activeSessionId);
 });

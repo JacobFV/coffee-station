@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import threading
 from typing import Any
 
 from google import genai
@@ -34,6 +35,7 @@ class AgentHarness:
         self.active_session_id: str | None = None
         self.task: asyncio.Task[None] | None = None
         self.stop_event = asyncio.Event()
+        self.step_lock = threading.Lock()
 
     def create_session(self, title: str = "Untitled session") -> SessionRecord:
         session = self.storage.create_session(model=self.settings.gemini_model, title=title)
@@ -92,6 +94,14 @@ class AgentHarness:
             await asyncio.sleep(self.settings.agent_step_interval_s)
 
     def step(self, session_id: str) -> None:
+        if not self.step_lock.acquire(blocking=False):
+            return
+        try:
+            self._step_locked(session_id)
+        finally:
+            self.step_lock.release()
+
+    def _step_locked(self, session_id: str) -> None:
         if self.client is None:
             self.storage.add_message(
                 session_id,
@@ -109,40 +119,55 @@ class AgentHarness:
             tools=[types.Tool(function_declarations=self.tools.declarations)],
             automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True),
         )
-        response = self.client.models.generate_content(
-            model=self.settings.gemini_model,
-            contents=contents,
-            config=config,
-        )
         text_parts: list[str] = []
-        function_results: list[dict[str, Any]] = []
-        for candidate in response.candidates or []:
-            if not candidate.content:
-                continue
-            for part in candidate.content.parts or []:
+        all_function_results: list[dict[str, Any]] = []
+        for _round in range(max(1, self.settings.agent_max_tool_rounds)):
+            response = self.client.models.generate_content(
+                model=self.settings.gemini_model,
+                contents=contents,
+                config=config,
+            )
+            model_content = self._first_content(response)
+            if model_content is None:
+                break
+            contents.append(model_content)
+            function_response_parts: list[types.Part] = []
+            for part in model_content.parts or []:
                 if getattr(part, "text", None):
                     text_parts.append(part.text)
                 call = getattr(part, "function_call", None)
-                if call:
-                    args = dict(call.args or {})
-                    try:
-                        result = self.tools.dispatch(session_id, call.name, args)
-                    except Exception as exc:
-                        result = {"error": str(exc)}
-                    function_results.append({"name": call.name, "result": result})
-                    self.storage.add_message(
-                        session_id,
-                        ChatMessage(role="tool", content=f"{call.name}: {result}", metadata={"tool": call.name, "result": result}),
-                    )
-        if text_parts or function_results:
+                if not call:
+                    continue
+                args = dict(call.args or {})
+                try:
+                    result = self.tools.dispatch(session_id, call.name, args)
+                except Exception as exc:
+                    result = {"error": str(exc)}
+                all_function_results.append({"name": call.name, "result": result})
+                function_response_parts.append(types.Part.from_function_response(name=call.name, response=result))
+                self.storage.add_message(
+                    session_id,
+                    ChatMessage(role="tool", content=f"{call.name}: {result}", metadata={"tool": call.name, "result": result}),
+                )
+            if not function_response_parts:
+                break
+            contents.append(types.Content(role="user", parts=function_response_parts))
+        if text_parts or all_function_results:
             self.storage.add_message(
                 session_id,
                 ChatMessage(
                     role="agent",
                     content="\n".join(text_parts) if text_parts else "Tool calls executed.",
-                    metadata={"function_results": function_results},
+                    metadata={"function_results": all_function_results},
                 ),
             )
+
+    @staticmethod
+    def _first_content(response: Any) -> types.Content | None:
+        for candidate in response.candidates or []:
+            if candidate.content:
+                return candidate.content
+        return None
 
     def _build_contents(self, session_id: str) -> list[types.Content]:
         messages = self.storage.list_messages(session_id, limit=50)
