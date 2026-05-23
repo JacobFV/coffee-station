@@ -34,13 +34,25 @@ Set your Gemini API key:
 export GEMINI_API_KEY="..."
 ```
 
-Run the app:
+Run the desktop app:
 
 ```bash
 coffee-station
 ```
 
-Open the printed local URL. The app uses the simulation robot backend unless a LeRobot port is configured.
+This opens Coffee Station in a native desktop window. The app uses the simulation robot backend unless a LeRobot port is configured.
+
+Development server mode is still available:
+
+```bash
+coffee-station --server
+```
+
+Browser mode is also available:
+
+```bash
+coffee-station --browser
+```
 
 ## Hardware Configuration
 
