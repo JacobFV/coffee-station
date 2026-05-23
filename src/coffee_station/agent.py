@@ -1,0 +1,167 @@
+from __future__ import annotations
+
+import asyncio
+import logging
+from typing import Any
+
+from google import genai
+from google.genai import types
+
+from .camera import CameraManager
+from .schemas import ChatMessage, SessionRecord
+from .settings import Settings
+from .storage import Storage
+from .tools import ToolRegistry
+
+LOGGER = logging.getLogger(__name__)
+
+SYSTEM_PROMPT = """You control a USB LeRobot follower arm through tools.
+Use direct joint-pose tools only when a joint-space command is explicit.
+Use world-space IK tools for object- or camera-grounded movement.
+Prefer small, reversible movements, and schedule multi-step motion with bundle_tool_calls when timing matters.
+A camera frame is normally included on each loop step according to camera feed settings.
+Report concise observations and tool decisions. Never claim a movement happened unless a tool result confirms it.
+"""
+
+
+class AgentHarness:
+    def __init__(self, settings: Settings, storage: Storage, cameras: CameraManager, tools: ToolRegistry) -> None:
+        self.settings = settings
+        self.storage = storage
+        self.cameras = cameras
+        self.tools = tools
+        self.client = genai.Client(api_key=settings.gemini_api_key) if settings.gemini_api_key else None
+        self.active_session_id: str | None = None
+        self.task: asyncio.Task[None] | None = None
+        self.stop_event = asyncio.Event()
+
+    def create_session(self, title: str = "Untitled session") -> SessionRecord:
+        session = self.storage.create_session(model=self.settings.gemini_model, title=title)
+        for config in self.cameras.list_configs():
+            self.storage.upsert_camera_config(session.id, config)
+        self.storage.add_message(session.id, ChatMessage(role="system", content=SYSTEM_PROMPT))
+        self.active_session_id = session.id
+        return session
+
+    def set_active_session(self, session_id: str) -> SessionRecord:
+        session = self.storage.get_session(session_id)
+        if session is None:
+            raise ValueError(f"session not found: {session_id}")
+        self.active_session_id = session.id
+        configs = self.storage.list_camera_configs(session.id)
+        for config in configs:
+            self.cameras.configure(
+                config.camera_id,
+                enabled=config.enabled,
+                auto_include=config.auto_include,
+                frequency_hz=config.frequency_hz,
+                label=config.label,
+            )
+        return session
+
+    def add_user_message(self, session_id: str, content: str) -> ChatMessage:
+        message = ChatMessage(role="user", content=content)
+        return self.storage.add_message(session_id, message)
+
+    def pause(self, session_id: str) -> None:
+        self.storage.update_session_status(session_id, "paused")
+
+    def resume(self, session_id: str) -> None:
+        self.storage.update_session_status(session_id, "running")
+        self.active_session_id = session_id
+
+    def start_background_loop(self) -> None:
+        if self.task is None or self.task.done():
+            self.task = asyncio.create_task(self._loop())
+
+    async def shutdown(self) -> None:
+        self.stop_event.set()
+        if self.task is not None:
+            await self.task
+
+    async def _loop(self) -> None:
+        while not self.stop_event.is_set():
+            try:
+                self.tools.run_due_actions()
+                if self.active_session_id:
+                    session = self.storage.get_session(self.active_session_id)
+                    if session and session.status == "running":
+                        await asyncio.to_thread(self.step, session.id)
+            except Exception:
+                LOGGER.exception("agent loop step failed")
+            await asyncio.sleep(self.settings.agent_step_interval_s)
+
+    def step(self, session_id: str) -> None:
+        if self.client is None:
+            self.storage.add_message(
+                session_id,
+                ChatMessage(
+                    role="agent",
+                    content="GEMINI_API_KEY is not configured; autonomous model steps are disabled.",
+                    metadata={"error": "missing_api_key"},
+                ),
+            )
+            self.storage.update_session_status(session_id, "paused")
+            return
+
+        contents = self._build_contents(session_id)
+        config = types.GenerateContentConfig(
+            tools=[types.Tool(function_declarations=self.tools.declarations)],
+            automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True),
+        )
+        response = self.client.models.generate_content(
+            model=self.settings.gemini_model,
+            contents=contents,
+            config=config,
+        )
+        text_parts: list[str] = []
+        function_results: list[dict[str, Any]] = []
+        for candidate in response.candidates or []:
+            if not candidate.content:
+                continue
+            for part in candidate.content.parts or []:
+                if getattr(part, "text", None):
+                    text_parts.append(part.text)
+                call = getattr(part, "function_call", None)
+                if call:
+                    args = dict(call.args or {})
+                    try:
+                        result = self.tools.dispatch(session_id, call.name, args)
+                    except Exception as exc:
+                        result = {"error": str(exc)}
+                    function_results.append({"name": call.name, "result": result})
+                    self.storage.add_message(
+                        session_id,
+                        ChatMessage(role="tool", content=f"{call.name}: {result}", metadata={"tool": call.name, "result": result}),
+                    )
+        if text_parts or function_results:
+            self.storage.add_message(
+                session_id,
+                ChatMessage(
+                    role="agent",
+                    content="\n".join(text_parts) if text_parts else "Tool calls executed.",
+                    metadata={"function_results": function_results},
+                ),
+            )
+
+    def _build_contents(self, session_id: str) -> list[types.Content]:
+        messages = self.storage.list_messages(session_id, limit=50)
+        contents: list[types.Content] = []
+        for message in messages:
+            if message.role == "system":
+                contents.append(types.Content(role="user", parts=[types.Part(text=f"System instruction: {message.content}")]))
+            elif message.role == "agent":
+                contents.append(types.Content(role="model", parts=[types.Part(text=message.content)]))
+            elif message.role in {"user", "tool"}:
+                contents.append(types.Content(role="user", parts=[types.Part(text=f"{message.role}: {message.content}")]))
+
+        frame_parts: list[types.Part] = []
+        for frame in self.cameras.frames_for_agent_step():
+            frame_parts.append(types.Part(text=f"Camera {frame.camera_id} frame at {frame.timestamp:.3f}"))
+            frame_parts.append(types.Part.from_bytes(data=frame.jpeg, mime_type="image/jpeg"))
+        status = self.tools.get_robot_state(session_id)
+        step_parts = [
+            types.Part(text=f"Agent loop step. Robot state: {status}. Decide whether to call tools or wait.")
+        ] + frame_parts
+        contents.append(types.Content(role="user", parts=step_parts))
+        return contents
