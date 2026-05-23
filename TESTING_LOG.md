@@ -104,3 +104,36 @@
 - Strict LeRobot connect with all six servos attached on `/dev/cu.usbmodem5B7B0165961` fails with missing motor IDs 1-6 and found motor list `{}`.
 - Interpretation: the controller and LeRobot software path are working, because one isolated servo responds as ID `1` model `777` at baud `1000000`. Adding more servos makes the bus unstable or silent. The most likely remaining hardware/configuration causes are duplicate servo IDs, power sag under multiple servos, or a daisy-chain/cable polarity issue introduced when additional servos are connected.
 - Movement commands were not attempted. With all six attached, no servo IDs respond; with a partial/ambiguous bus, motion would not validate the full arm and could mask an ID or wiring issue.
+
+## 2026-05-23 Full Agent Test Pass
+
+- `pytest -q`: `18 passed`.
+- Confirmed `.env` has `GEMINI_API_KEY` and `GEMINI_MODEL`; configured model is `gemini-flash-latest`.
+- Queried Gemini model listing with the configured API key. `models/gemini-flash-latest` is available and supports `generateContent`.
+- Ran a direct live `AgentHarness` smoke test with a temporary SQLite data dir and a simulated robot:
+  - Created a session successfully.
+  - `list_agent_skills` returned `gripper-world-calibration`, `pose-table-6dof`, and `pour-coffee-cup-to-cup`.
+  - `activate_agent_skill` loaded the full `pose-table-6dof` instructions.
+  - Camera `0` was configured enabled, auto-included at `30.0` Hz, and labeled `live-test-camera`.
+  - `request_latest_frame` returned a `1280x720` frame.
+  - Agent content assembly included one inline JPEG image part, confirming default camera-frame feedback into the model loop.
+  - `set_joint_pose` succeeded against the simulated backend.
+  - `bundle_tool_calls` scheduled two calls; `run_due_actions` completed an immediate `set_joint_pose` and a delayed `offset_world_pose`.
+  - `record_calibration_point` produced a calibration sample count of `1` and offset approximately `{x: 0.01, y: -0.02, z: 0.03}`.
+  - Live Gemini was prompted not to move and to call only diagnostic tools. It called `get_robot_state` and `list_agent_skills`, then returned a summary. It did not call `set_joint_pose`, `set_world_pose`, `offset_world_pose`, or `bundle_tool_calls`.
+- Ran hardware-aware safety checks with `ROBOT_BACKEND=lerobot`, `LEROBOT_PORT=/dev/cu.usbmodem5B7B0165961`, and `robot_strict_connect=False`:
+  - Backend exposed `connected=False`, `unavailable=True`.
+  - A direct movement tool call was refused with `RobotError`.
+  - `diagnose_hardware` showed the configured serial port visible.
+  - `scan_feetech_motors('/dev/cu.usbmodem5B7B0165961')` returned `found: {}` with all six servos attached.
+- Ran a loopback FastAPI app pass on `127.0.0.1:8771` with the same LeRobot port:
+  - `/api/sessions` and `/api/sessions/{id}` returned a paused default session and robot state `backend=lerobot`, `connected=False`, `unavailable=True`.
+  - `/api/cameras` returned one camera.
+  - `/api/cameras/configure` set camera `0` to enabled, auto-include `30.0` Hz, label `api-test-camera`.
+  - `/api/cameras/0/latest` returned a `1280x720` frame.
+  - `/api/cameras/0/stream?fps=30` returned `200` with `multipart/x-mixed-replace; boundary=frame` and MJPEG frame bytes.
+  - `/api/hardware/diagnostics` returned `robot_backend=lerobot`, configured port `/dev/cu.usbmodem5B7B0165961`, `configured_port_visible=True`.
+  - `/api/skills` returned all three packaged skills.
+  - `/api/tools/call` with `get_robot_state` returned the unavailable LeRobot state.
+  - `/api/agent/step/{session_id}` with a no-movement prompt completed successfully; Gemini called `get_robot_state` and `list_agent_skills`, then summarized the unavailable LeRobot state. No movement tools were called.
+- Conclusion: the agent software path is fully exercised end-to-end through both direct harness and loopback API. The remaining blocker is physical servo-bus readiness: all six attached servos still scan as `{}`, so real arm movement remains intentionally blocked.
