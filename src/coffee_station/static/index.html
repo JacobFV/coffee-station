@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Coffee Station</title>
+    <link rel="stylesheet" href="/static/styles.css">
+  </head>
+  <body>
+    <div class="app-shell">
+      <main class="camera-stage">
+        <header class="topbar">
+          <div>
+            <h1>Coffee Station</h1>
+            <p id="robotStatus">Connecting</p>
+          </div>
+          <div class="camera-controls">
+            <select id="cameraSelect" aria-label="Camera"></select>
+            <label class="toggle">
+              <input id="autoInclude" type="checkbox" checked>
+              <span>Auto</span>
+            </label>
+            <label class="frequency">
+              <span>Hz</span>
+              <input id="frequency" type="number" min="0" max="30" step="0.25" value="1">
+            </label>
+            <button id="applyCamera" title="Apply camera feed settings">Apply</button>
+          </div>
+        </header>
+        <section class="video-band">
+          <img id="cameraFeed" alt="Camera feed">
+          <div id="noFrame">No camera frame</div>
+        </section>
+      </main>
+      <aside class="sidebar">
+        <div class="session-toolbar">
+          <button id="newSession" title="New session">New</button>
+          <button id="pauseSession" title="Pause session">Pause</button>
+          <button id="resumeSession" title="Resume session">Resume</button>
+        </div>
+        <select id="sessionSelect" aria-label="Session"></select>
+        <div id="messages" class="messages"></div>
+        <form id="chatForm" class="chat-form">
+          <textarea id="chatInput" rows="3" placeholder="Inject a message"></textarea>
+          <button type="submit">Send</button>
+        </form>
+      </aside>
+    </div>
+    <script src="/static/app.js"></script>
+  </body>
+</html>

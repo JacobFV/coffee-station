@@ -1,0 +1,239 @@
+:root {
+  color-scheme: dark;
+  --bg: #101114;
+  --panel: #181a1f;
+  --panel-2: #20232a;
+  --line: #323742;
+  --text: #f2f4f7;
+  --muted: #a8b0bd;
+  --accent: #52c7a3;
+  --danger: #e36b6b;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: var(--bg);
+  color: var(--text);
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+button,
+select,
+input,
+textarea {
+  font: inherit;
+}
+
+button,
+select,
+input,
+textarea {
+  border: 1px solid var(--line);
+  background: var(--panel-2);
+  color: var(--text);
+  border-radius: 6px;
+}
+
+button {
+  height: 36px;
+  padding: 0 12px;
+  cursor: pointer;
+}
+
+button:hover {
+  border-color: var(--accent);
+}
+
+.app-shell {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 380px;
+  min-height: 100vh;
+}
+
+.camera-stage {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  min-width: 0;
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--line);
+  background: #14161a;
+}
+
+.topbar h1 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 650;
+  letter-spacing: 0;
+}
+
+.topbar p {
+  margin: 3px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.camera-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.camera-controls select {
+  height: 36px;
+  min-width: 120px;
+}
+
+.toggle,
+.frequency {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 36px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel-2);
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.frequency input {
+  width: 70px;
+  height: 28px;
+  padding: 0 6px;
+}
+
+.video-band {
+  position: relative;
+  display: grid;
+  place-items: center;
+  min-height: 0;
+  background: #090a0c;
+  overflow: hidden;
+}
+
+#cameraFeed {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: none;
+}
+
+#noFrame {
+  color: var(--muted);
+  font-size: 15px;
+}
+
+.sidebar {
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  gap: 10px;
+  min-width: 0;
+  border-left: 1px solid var(--line);
+  background: var(--panel);
+  padding: 12px;
+}
+
+.session-toolbar {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+#sessionSelect {
+  height: 36px;
+  width: 100%;
+}
+
+.messages {
+  min-height: 0;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #111318;
+}
+
+.message {
+  padding: 10px;
+  border-bottom: 1px solid #262a33;
+}
+
+.message:last-child {
+  border-bottom: 0;
+}
+
+.message .meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 11px;
+  text-transform: uppercase;
+}
+
+.message .content {
+  margin-top: 6px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  line-height: 1.38;
+  font-size: 13px;
+}
+
+.message.user {
+  background: #14201d;
+}
+
+.message.tool {
+  background: #18191d;
+}
+
+.message.system {
+  display: none;
+}
+
+.chat-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+}
+
+.chat-form textarea {
+  resize: none;
+  min-width: 0;
+  padding: 9px;
+  line-height: 1.3;
+}
+
+.chat-form button {
+  align-self: end;
+  background: var(--accent);
+  color: #07110e;
+  border-color: transparent;
+  font-weight: 650;
+}
+
+@media (max-width: 900px) {
+  .app-shell {
+    grid-template-columns: 1fr;
+    grid-template-rows: minmax(55vh, 1fr) minmax(320px, 45vh);
+  }
+
+  .sidebar {
+    border-left: 0;
+    border-top: 1px solid var(--line);
+  }
+}
