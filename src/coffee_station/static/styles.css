@@ -287,10 +287,12 @@ input[type="number"]:focus, input[type="text"]:focus, textarea:focus {
 
 .chat-dock {
   position: fixed;
-  top: 80px;
+  left: 16px;
   right: 16px;
-  bottom: 84px;
-  width: 380px;
+  bottom: 16px;
+  max-width: 720px;
+  margin: 0 auto;
+  max-height: 46vh;
   display: grid;
   grid-template-rows: auto minmax(0, 1fr) auto;
   border-radius: var(--radius);
@@ -430,12 +432,12 @@ input[type="number"]:focus, input[type="text"]:focus, textarea:focus {
 .queue-chips {
   position: fixed;
   left: 16px;
-  bottom: 16px;
-  right: 412px;
+  top: 76px;
   z-index: 18;
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
+  max-width: calc(50vw - 32px);
   pointer-events: none;
 }
 
@@ -506,7 +508,7 @@ input[type="number"]:focus, input[type="text"]:focus, textarea:focus {
 
 .drawer {
   position: fixed;
-  top: 16px;
+  top: 80px;
   right: 16px;
   bottom: 16px;
   width: 420px;
@@ -732,15 +734,8 @@ input[type="number"]:focus, input[type="text"]:focus, textarea:focus {
 /* ============ Responsive ============ */
 
 @media (max-width: 900px) {
-  .chat-dock {
-    width: auto;
-    left: 16px;
-    right: 16px;
-    bottom: 16px;
-    top: auto;
-    height: 55vh;
-  }
-  .queue-chips { display: none; }
+  .chat-dock { max-height: 55vh; }
+  .queue-chips { max-width: calc(100vw - 32px); }
   .drawer { width: auto; left: 16px; }
   .session-pill { max-width: 140px; }
 }
