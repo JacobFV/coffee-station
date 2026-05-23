@@ -67,3 +67,16 @@
   - `/dev/tty.usbmodem5B415328371`: `found: {}`
 - Strict LeRobot connect still fails with missing motor IDs 1-6 and found motor list `{}`.
 - Conclusion remains unchanged: USB serial controller is visible, but no Feetech servo on the bus is responding to LeRobot's scan.
+
+## 2026-05-23 New Driver Retry
+
+- User swapped to a new driver and asked to try again.
+- Serial enumeration now shows a different controller serial:
+  - `/dev/cu.usbmodem5B7B0165961`
+  - `/dev/tty.usbmodem5B7B0165961`
+  - `USB VID:PID=1A86:55D3 SER=5B7B016596`
+- Low-level Feetech scan results:
+  - `/dev/cu.usbmodem5B7B0165961`: `found: {}`
+  - `/dev/tty.usbmodem5B7B0165961`: `found: {}`
+- Strict LeRobot connect on `/dev/cu.usbmodem5B7B0165961` still fails with missing motor IDs 1-6 and found motor list `{}`.
+- Conclusion: the new driver is visible over USB, but still no Feetech servo responds on the bus.
