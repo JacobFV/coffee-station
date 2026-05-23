@@ -80,3 +80,27 @@
   - `/dev/tty.usbmodem5B7B0165961`: `found: {}`
 - Strict LeRobot connect on `/dev/cu.usbmodem5B7B0165961` still fails with missing motor IDs 1-6 and found motor list `{}`.
 - Conclusion: the new driver is visible over USB, but still no Feetech servo responds on the bus.
+
+## 2026-05-23 Incremental Servo Chain Retry
+
+- User replugged the stack with only one servo connected.
+- Serial enumeration still shows the new driver:
+  - `/dev/cu.usbmodem5B7B0165961`
+  - `/dev/tty.usbmodem5B7B0165961`
+  - `USB VID:PID=1A86:55D3 SER=5B7B016596`
+- Low-level Feetech scan with one servo connected:
+  - `/dev/cu.usbmodem5B7B0165961`: `found: {1000000: [1]}`; scan printed model map `{1: 777}`
+  - `/dev/tty.usbmodem5B7B0165961`: `found: {1000000: [1]}`; scan printed model map `{1: 777}`
+- This is the first confirmed servo-bus response. The responding servo is an STS3215-compatible model `777` at ID `1`, baud `1000000`.
+- User then added a second servo. Low-level Feetech scan:
+  - `/dev/cu.usbmodem5B7B0165961`: `found: {1000000: [1]}`; scan printed model map `{1: 777}`
+  - `/dev/tty.usbmodem5B7B0165961`: `found: {}`
+- User then added four servos. Low-level Feetech scan:
+  - `/dev/cu.usbmodem5B7B0165961`: `found: {}`
+  - `/dev/tty.usbmodem5B7B0165961`: `found: {}`
+- User then added all six servos. Low-level Feetech scan:
+  - `/dev/cu.usbmodem5B7B0165961`: `found: {}`
+  - `/dev/tty.usbmodem5B7B0165961`: `found: {}`
+- Strict LeRobot connect with all six servos attached on `/dev/cu.usbmodem5B7B0165961` fails with missing motor IDs 1-6 and found motor list `{}`.
+- Interpretation: the controller and LeRobot software path are working, because one isolated servo responds as ID `1` model `777` at baud `1000000`. Adding more servos makes the bus unstable or silent. The most likely remaining hardware/configuration causes are duplicate servo IDs, power sag under multiple servos, or a daisy-chain/cable polarity issue introduced when additional servos are connected.
+- Movement commands were not attempted. With all six attached, no servo IDs respond; with a partial/ambiguous bus, motion would not validate the full arm and could mask an ID or wiring issue.
