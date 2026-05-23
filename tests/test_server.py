@@ -22,9 +22,13 @@ def test_session_api_lifecycle(tmp_path):
 
         cameras = client.get("/api/cameras").json()
         assert "camera" in cameras["cameras"][0]
+        assert client.get("/api/cameras/999/stream").status_code == 404
 
         actions = client.get(f"/api/sessions/{session_id}/actions").json()
         assert actions["queued_actions"] == []
 
         skills = client.get("/api/skills").json()
         assert any(skill["name"] == "pose-table-6dof" for skill in skills["skills"])
+
+        hardware = client.get("/api/hardware/diagnostics").json()
+        assert "serial_ports" in hardware

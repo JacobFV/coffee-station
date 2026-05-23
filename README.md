@@ -8,6 +8,7 @@ Coffee Station is a local Python desktop harness for a USB Hugging Face LeRobot 
 - Queue inspection and cancellation for scheduled calls.
 - Multi-camera OpenCV capture with configurable automatic frame injection into the agent loop.
 - Camera device scanning, enable/disable, auto-feed frequency, and latest-frame requests.
+- Realtime MJPEG camera display in the desktop UI, capped by `CAMERA_FPS`.
 - Manual latest-frame requests.
 - Local session storage in SQLite.
 - A local desktop-style UI with the active camera feed, session controls, queue controls, manual tool execution, pause/resume, robot stop, and an autonomous agent chat sidebar.
@@ -66,6 +67,12 @@ export LEROBOT_TYPE=so100_follower
 export GEMINI_MODEL=gemini-flash-latest
 ```
 
+Camera display rate is controlled by `CAMERA_FPS` and the UI feed setting:
+
+```bash
+export CAMERA_FPS=30
+```
+
 If LeRobot action keys cannot be inferred from `robot.action_features`, configure them explicitly in hardware order:
 
 ```bash
@@ -79,6 +86,14 @@ export ROBOT_JOINT_LIMITS_JSON='[[-90,90],[-90,45],[-120,120],[-120,120],[-180,1
 ```
 
 If the robot cannot connect, the app refuses movement commands for the LeRobot backend. Use `ROBOT_BACKEND=sim` for development without hardware.
+
+Use the built-in diagnostics before enabling the physical backend:
+
+```bash
+curl http://127.0.0.1:8765/api/hardware/diagnostics
+```
+
+The desktop UI also exposes `diagnose_hardware` in the manual tool panel. The real LeRobot backend is ready only when a USB serial arm controller is visible and `LEROBOT_PORT` points to that device.
 
 ## Tool Surface
 

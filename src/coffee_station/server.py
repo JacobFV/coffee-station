@@ -6,12 +6,13 @@ from importlib import resources
 from typing import Any
 
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import FileResponse, Response
+from fastapi.responses import FileResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from .agent import AgentHarness
 from .camera import CameraManager
+from .hardware import diagnose_hardware
 from .robot import build_robot
 from .schemas import ChatMessage, SessionSnapshot
 from .settings import Settings
@@ -53,7 +54,7 @@ class AppState:
         self.cameras = CameraManager(settings)
         self.robot = build_robot(settings)
         self.skills = SkillLibrary()
-        self.tools = ToolRegistry(self.robot, self.cameras, self.storage, self.skills)
+        self.tools = ToolRegistry(self.robot, self.cameras, self.storage, self.settings, self.skills)
         self.agent = AgentHarness(settings, self.storage, self.cameras, self.tools, self.skills)
 
 
@@ -168,6 +169,28 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             return Response(status_code=204)
         return Response(content=jpeg, media_type="image/jpeg", headers={"Cache-Control": "no-store"})
 
+    @app.get("/api/cameras/{camera_id}/stream")
+    def camera_stream(camera_id: int, fps: float | None = None) -> StreamingResponse:
+        if camera_id not in state.cameras.devices:
+            raise HTTPException(status_code=404, detail="camera not configured")
+
+        def generate():
+            for frame in state.cameras.stream_frames(camera_id, max_fps=fps):
+                yield (
+                    b"--frame\r\n"
+                    b"Content-Type: image/jpeg\r\n"
+                    + f"X-Camera-Timestamp: {frame.timestamp:.6f}\r\n".encode("ascii")
+                    + f"Content-Length: {len(frame.jpeg)}\r\n\r\n".encode("ascii")
+                    + frame.jpeg
+                    + b"\r\n"
+                )
+
+        return StreamingResponse(
+            generate(),
+            media_type="multipart/x-mixed-replace; boundary=frame",
+            headers={"Cache-Control": "no-store"},
+        )
+
     @app.get("/api/cameras/{camera_id}/latest")
     def latest_frame(camera_id: int) -> dict[str, Any]:
         frame = state.cameras.latest_frame(camera_id, include_bytes=True, refresh=True)
@@ -226,6 +249,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if not state.storage.get_session(session_id):
             raise HTTPException(status_code=404, detail="session not found")
         return state.tools.stop_robot(session_id)
+
+    @app.get("/api/hardware/diagnostics")
+    def hardware_diagnostics() -> dict[str, Any]:
+        return diagnose_hardware(state.settings)
 
     @app.post("/api/agent/step/{session_id}")
     async def manual_step(session_id: str) -> dict[str, Any]:

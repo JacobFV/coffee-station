@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import inspect
 import time
 from abc import ABC, abstractmethod
 from typing import Any
@@ -122,10 +123,14 @@ class LeRobotFollower(RobotBackend):
             except Exception as exc:
                 raise RobotError("LeRobot is not installed with SO follower support; install .[lerobot]") from exc
 
-        config = SOFollowerConfig(
-            port=self.settings.lerobot_port,
-            id=self.settings.lerobot_id,
-        )
+        config_kwargs: dict[str, Any] = {"port": self.settings.lerobot_port}
+        if "id" in inspect.signature(SOFollowerConfig).parameters:
+            config_kwargs["id"] = self.settings.lerobot_id
+        config = SOFollowerConfig(**config_kwargs)
+        if not hasattr(config, "id"):
+            setattr(config, "id", self.settings.lerobot_id)
+        if not hasattr(config, "calibration_dir"):
+            setattr(config, "calibration_dir", None)
         self.robot = SOFollower(config)
         self.robot.connect(calibrate=False)
         self.action_keys = self.action_keys or self._infer_action_keys()

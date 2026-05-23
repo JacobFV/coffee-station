@@ -1,7 +1,7 @@
 const state = {
   activeSessionId: null,
   activeCameraId: 0,
-  frameTimer: null,
+  streamUrl: null,
   pollTimer: null
 };
 
@@ -145,32 +145,33 @@ async function refreshCameras() {
     els.cameraSelect.value = String(camera.camera_id);
     els.autoInclude.checked = camera.auto_include;
     els.frequency.value = camera.frequency_hz;
-    refreshFrame();
+    setCameraStream();
   }
 }
 
-function refreshFrame() {
+function setCameraStream() {
   if (state.activeCameraId === null || state.activeCameraId === undefined) {
     return;
   }
-  const url = `/api/cameras/${state.activeCameraId}/frame?t=${Date.now()}`;
-  const image = new Image();
-  image.onload = () => {
-    els.cameraFeed.src = url;
+  const fps = Math.max(1, Math.min(60, Number(els.frequency.value) || 30));
+  const url = `/api/cameras/${state.activeCameraId}/stream?fps=${encodeURIComponent(fps)}`;
+  if (state.streamUrl === url && els.cameraFeed.src.endsWith(url)) {
+    return;
+  }
+  state.streamUrl = url;
+  els.cameraFeed.onload = () => {
     els.cameraFeed.style.display = "block";
     els.noFrame.style.display = "none";
   };
-  image.onerror = () => {
+  els.cameraFeed.onerror = () => {
     els.cameraFeed.style.display = "none";
     els.noFrame.style.display = "block";
   };
-  image.src = url;
+  els.cameraFeed.src = url;
 }
 
 function startPolling() {
-  clearInterval(state.frameTimer);
   clearInterval(state.pollTimer);
-  state.frameTimer = setInterval(refreshFrame, 500);
   state.pollTimer = setInterval(async () => {
     if (state.activeSessionId) {
       await refreshSession(state.activeSessionId);
@@ -181,7 +182,8 @@ function startPolling() {
 
 els.cameraSelect.addEventListener("change", async () => {
   state.activeCameraId = Number(els.cameraSelect.value);
-  refreshFrame();
+  state.streamUrl = null;
+  setCameraStream();
 });
 
 els.scanCameras.addEventListener("click", async () => {
@@ -206,6 +208,8 @@ els.applyCamera.addEventListener("click", async () => {
     })
   });
   await refreshCameras();
+  state.streamUrl = null;
+  setCameraStream();
 });
 
 els.newSession.addEventListener("click", async () => {
@@ -254,6 +258,7 @@ els.chatForm.addEventListener("submit", async (event) => {
 els.toolSelect.addEventListener("change", () => {
   const examples = {
     get_robot_state: {},
+    diagnose_hardware: {},
     set_joint_pose: { joints: [0, -25, 35, -10, 0, 0], duration_s: 0.5 },
     set_world_pose: { x: 0.18, y: 0, z: 0.14, pitch: -25, duration_s: 0.5 },
     offset_world_pose: { dx: 0.01, dy: 0, dz: 0, duration_s: 0.25 },

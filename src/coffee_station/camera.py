@@ -37,6 +37,10 @@ class CameraDevice:
         self.capture: cv2.VideoCapture | None = None
         self.latest: CapturedFrame | None = None
         self.lock = threading.Lock()
+        self.capture_lock = threading.Lock()
+        self.frame_ready = threading.Condition(self.lock)
+        self.capture_thread: threading.Thread | None = None
+        self.stop_event = threading.Event()
         self.open_error: str | None = None
 
     def open(self) -> None:
@@ -54,17 +58,54 @@ class CameraDevice:
         self.open_error = None
 
     def close(self) -> None:
-        if self.capture is not None:
-            self.capture.release()
-            self.capture = None
+        self.stop_capture_loop()
+        with self.capture_lock:
+            if self.capture is not None:
+                self.capture.release()
+                self.capture = None
+
+    def start_capture_loop(self) -> None:
+        if not self.config.enabled:
+            return
+        if self.capture_thread is not None and self.capture_thread.is_alive():
+            return
+        self.stop_event.clear()
+        self.capture_thread = threading.Thread(
+            target=self._capture_loop,
+            name=f"camera-{self.config.camera_id}-capture",
+            daemon=True,
+        )
+        self.capture_thread.start()
+
+    def stop_capture_loop(self) -> None:
+        self.stop_event.set()
+        if (
+            self.capture_thread is not None
+            and self.capture_thread.is_alive()
+            and threading.current_thread() is not self.capture_thread
+        ):
+            self.capture_thread.join(timeout=2.0)
+        self.capture_thread = None
+
+    def _capture_loop(self) -> None:
+        fps = max(1.0, float(self.settings.camera_fps))
+        interval_s = 1.0 / fps
+        while not self.stop_event.is_set() and self.config.enabled:
+            started_at = time.time()
+            self.read()
+            elapsed = time.time() - started_at
+            wait_s = max(0.0, interval_s - elapsed)
+            if wait_s:
+                self.stop_event.wait(wait_s)
 
     def read(self) -> CapturedFrame | None:
         if not self.config.enabled:
             return self.latest
-        self.open()
-        if self.capture is None:
-            return self.latest
-        ok, frame = self.capture.read()
+        with self.capture_lock:
+            self.open()
+            if self.capture is None:
+                return self.latest
+            ok, frame = self.capture.read()
         if not ok:
             self.open_error = f"camera {self.config.camera_id} read failed"
             return self.latest
@@ -82,7 +123,18 @@ class CameraDevice:
         )
         with self.lock:
             self.latest = captured
+            self.frame_ready.notify_all()
         return captured
+
+    def wait_for_frame(self, last_timestamp: float | None = None, timeout_s: float = 1.0) -> CapturedFrame | None:
+        self.start_capture_loop()
+        with self.lock:
+            if self.latest is not None and (last_timestamp is None or self.latest.timestamp > last_timestamp):
+                return self.latest
+            self.frame_ready.wait(timeout=timeout_s)
+            if self.latest is not None and (last_timestamp is None or self.latest.timestamp > last_timestamp):
+                return self.latest
+            return self.latest
 
 
 class CameraManager:
@@ -131,6 +183,8 @@ class CameraManager:
                 device.config.enabled = enabled
                 if not enabled:
                     device.close()
+                else:
+                    device.start_capture_loop()
             if auto_include is not None:
                 device.config.auto_include = auto_include
             if frequency_hz is not None:
@@ -169,6 +223,28 @@ class CameraManager:
         frame = device.read() if refresh else device.latest
         return None if frame is None else frame.jpeg
 
+    def stream_frames(self, camera_id: int, max_fps: float | None = None):
+        device = self.devices.get(camera_id)
+        if device is None:
+            return
+        target_fps = max(1.0, min(float(max_fps or self.settings.camera_fps), float(self.settings.camera_fps)))
+        min_interval_s = 1.0 / target_fps
+        last_sent_at = 0.0
+        last_timestamp: float | None = None
+        while device.config.enabled:
+            frame = device.wait_for_frame(last_timestamp=last_timestamp, timeout_s=1.0)
+            if frame is None:
+                frame = device.read()
+            if frame is None:
+                time.sleep(0.1)
+                continue
+            now = time.time()
+            if now - last_sent_at < min_interval_s:
+                time.sleep(min_interval_s - (now - last_sent_at))
+            last_timestamp = frame.timestamp
+            last_sent_at = time.time()
+            yield frame
+
     def frames_for_agent_step(self) -> list[CapturedFrame]:
         now = time.time()
         frames: list[CapturedFrame] = []
@@ -183,7 +259,7 @@ class CameraManager:
             last = self.last_auto_sent.get(camera_id, 0.0)
             if now - last < interval:
                 continue
-            frame = device.read()
+            frame = device.latest if device.capture_thread and device.capture_thread.is_alive() else device.read()
             if frame is not None:
                 frames.append(frame)
                 self.last_auto_sent[camera_id] = now

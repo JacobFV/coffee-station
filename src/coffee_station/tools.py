@@ -6,7 +6,9 @@ from typing import Any, Callable
 from google.genai import types
 
 from .camera import CameraManager
+from .hardware import diagnose_hardware
 from .robot import RobotController
+from .settings import Settings
 from .schemas import CalibrationPoint, ChatMessage, ScheduledAction, ToolEnvelope, WorldPose
 from .skills import SkillLibrary
 from .storage import Storage
@@ -14,10 +16,12 @@ from .storage import Storage
 
 class ToolRegistry:
     def __init__(self, robot: RobotController, cameras: CameraManager, storage: Storage,
+                 settings: Settings | None = None,
                  skills: SkillLibrary | None = None) -> None:
         self.robot = robot
         self.cameras = cameras
         self.storage = storage
+        self.settings = settings or Settings()
         self.skills = skills or SkillLibrary()
         self._tools: dict[str, Callable[..., dict[str, Any]]] = {
             "set_joint_pose": self.set_joint_pose,
@@ -29,6 +33,7 @@ class ToolRegistry:
             "list_cameras": self.list_cameras,
             "discover_cameras": self.discover_cameras,
             "get_robot_state": self.get_robot_state,
+            "diagnose_hardware": self.diagnose_hardware,
             "stop_robot": self.stop_robot,
             "list_scheduled_actions": self.list_scheduled_actions,
             "cancel_scheduled_action": self.cancel_scheduled_action,
@@ -157,6 +162,11 @@ class ToolRegistry:
                 parameters={"type": "object", "properties": {}},
             ),
             types.FunctionDeclaration(
+                name="diagnose_hardware",
+                description="Report configured robot backend, visible serial ports, macOS USB summary, and whether LeRobot has a usable port.",
+                parameters={"type": "object", "properties": {}},
+            ),
+            types.FunctionDeclaration(
                 name="stop_robot",
                 description="Immediately stop the robot backend when supported. On basic LeRobot backends this may disconnect the robot.",
                 parameters={"type": "object", "properties": {}},
@@ -244,6 +254,7 @@ class ToolRegistry:
             "list_cameras",
             "discover_cameras",
             "get_robot_state",
+            "diagnose_hardware",
             "stop_robot",
             "list_scheduled_actions",
             "cancel_scheduled_action",
@@ -346,6 +357,9 @@ class ToolRegistry:
 
     def get_robot_state(self, session_id: str) -> dict[str, Any]:
         return self.robot.state()
+
+    def diagnose_hardware(self, session_id: str) -> dict[str, Any]:
+        return diagnose_hardware(self.settings)
 
     def stop_robot(self, session_id: str) -> dict[str, Any]:
         canceled = self.storage.cancel_queued_actions(session_id)
