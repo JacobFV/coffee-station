@@ -95,6 +95,14 @@ curl http://127.0.0.1:8765/api/hardware/diagnostics
 
 The desktop UI also exposes `diagnose_hardware` in the manual tool panel. The real LeRobot backend is ready only when a USB serial arm controller is visible and `LEROBOT_PORT` points to that device.
 
+To verify that the servos themselves are responding on the Feetech bus:
+
+```bash
+curl "http://127.0.0.1:8765/api/hardware/feetech-scan?port=/dev/cu.usbmodem..."
+```
+
+For an SO follower arm, the scan should find servo IDs `1` through `6`.
+
 ## Tool Surface
 
 The Gemini harness and UI expose these tools:

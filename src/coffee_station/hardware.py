@@ -60,16 +60,31 @@ def diagnose_hardware(settings: Settings) -> dict[str, Any]:
         if isinstance(port.get("device"), str)
         and ("/cu.usb" in port["device"] or "/tty.usb" in port["device"] or "usb" in (port.get("description") or "").lower())
     ]
+    configured_port_visible = bool(settings.lerobot_port and any(port["device"] == settings.lerobot_port for port in ports))
     return {
         "robot_backend": settings.robot_backend,
         "configured_lerobot_port": settings.lerobot_port,
         "serial_ports": ports,
         "usb_serial_ports": usb_serial_ports,
         "usb_summary": usb,
-        "ready_for_lerobot": bool(settings.lerobot_port and any(port["device"] == settings.lerobot_port for port in ports)),
+        "configured_port_visible": configured_port_visible,
+        "ready_for_lerobot": configured_port_visible,
+        "ready_for_lerobot_note": "This checks serial-port visibility only; run feetech motor scan to verify servo handshake.",
         "guidance": (
             "Set ROBOT_BACKEND=lerobot and LEROBOT_PORT to a visible /dev/cu.usb* device."
             if not usb_serial_ports
             else "Use one visible usb serial port as LEROBOT_PORT, then restart."
         ),
     }
+
+
+def scan_feetech_motors(port: str) -> dict[str, Any]:
+    try:
+        from lerobot.motors.feetech import FeetechMotorsBus
+    except Exception as exc:
+        return {"port": port, "ok": False, "error": f"LeRobot Feetech support unavailable: {exc}"}
+    try:
+        found = FeetechMotorsBus.scan_port(port)
+    except Exception as exc:
+        return {"port": port, "ok": False, "error": str(exc)}
+    return {"port": port, "ok": True, "found": found}

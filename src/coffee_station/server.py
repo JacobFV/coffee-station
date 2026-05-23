@@ -12,7 +12,7 @@ from pydantic import BaseModel
 
 from .agent import AgentHarness
 from .camera import CameraManager
-from .hardware import diagnose_hardware
+from .hardware import diagnose_hardware, scan_feetech_motors
 from .robot import build_robot
 from .schemas import ChatMessage, SessionSnapshot
 from .settings import Settings
@@ -253,6 +253,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.get("/api/hardware/diagnostics")
     def hardware_diagnostics() -> dict[str, Any]:
         return diagnose_hardware(state.settings)
+
+    @app.get("/api/hardware/feetech-scan")
+    def hardware_feetech_scan(port: str) -> dict[str, Any]:
+        return scan_feetech_motors(port)
 
     @app.post("/api/agent/step/{session_id}")
     async def manual_step(session_id: str) -> dict[str, Any]:

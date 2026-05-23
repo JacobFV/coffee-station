@@ -18,7 +18,7 @@ dependencies = [
 
 [project.optional-dependencies]
 lerobot = [
-    "lerobot>=0.4.1",
+    "lerobot[feetech]>=0.4.1",
 ]
 dev = [
     "pytest>=8.2.0",

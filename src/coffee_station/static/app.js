@@ -265,6 +265,7 @@ els.toolSelect.addEventListener("change", () => {
   const examples = {
     get_robot_state: {},
     diagnose_hardware: {},
+    scan_feetech_motors: { port: "/dev/cu.usbmodem5B415328371" },
     set_joint_pose: { joints: [0, -25, 35, -10, 0, 0], duration_s: 0.5 },
     set_world_pose: { x: 0.18, y: 0, z: 0.14, pitch: -25, duration_s: 0.5 },
     offset_world_pose: { dx: 0.01, dy: 0, dz: 0, duration_s: 0.25 },

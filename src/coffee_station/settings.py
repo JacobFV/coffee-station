@@ -8,7 +8,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore", populate_by_name=True)
 
     gemini_api_key: str | None = Field(default=None, alias="GEMINI_API_KEY")
     gemini_model: str = Field(default="gemini-flash-latest", alias="GEMINI_MODEL")
@@ -22,6 +22,7 @@ class Settings(BaseSettings):
     lerobot_action_keys: str | None = Field(default=None, alias="LEROBOT_ACTION_KEYS")
     robot_joint_limits_json: str | None = Field(default=None, alias="ROBOT_JOINT_LIMITS_JSON")
     robot_min_command_interval_s: float = Field(default=0.05, alias="ROBOT_MIN_COMMAND_INTERVAL_S")
+    robot_strict_connect: bool = Field(default=False, alias="ROBOT_STRICT_CONNECT")
 
     camera_indices: str = Field(default="0", alias="CAMERA_INDICES")
     camera_discovery_max_index: int = Field(default=6, alias="CAMERA_DISCOVERY_MAX_INDEX")

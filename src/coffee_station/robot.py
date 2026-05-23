@@ -94,6 +94,38 @@ class SimRobot(RobotBackend):
             time.sleep(wait_s)
 
 
+class UnavailableRobot(RobotBackend):
+    def __init__(self, requested_backend: str, error: str) -> None:
+        self.requested_backend = requested_backend
+        self.error = error
+        self.connected = False
+
+    def connect(self) -> None:
+        self.connected = False
+
+    def disconnect(self) -> None:
+        self.connected = False
+
+    def set_joint_pose(self, pose: JointPose, duration_s: float = 0.5) -> dict[str, Any]:
+        raise RobotError(f"{self.requested_backend} robot is unavailable: {self.error}")
+
+    def stop(self) -> dict[str, Any]:
+        return {
+            "backend": self.requested_backend,
+            "connected": False,
+            "stopped": False,
+            "error": self.error,
+        }
+
+    def get_state(self) -> dict[str, Any]:
+        return {
+            "backend": self.requested_backend,
+            "connected": False,
+            "unavailable": True,
+            "error": self.error,
+        }
+
+
 class LeRobotFollower(RobotBackend):
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
@@ -288,5 +320,13 @@ def build_robot(settings: Settings) -> RobotController:
     else:
         backend = SimRobot(limits=limits, min_command_interval_s=settings.robot_min_command_interval_s)
     controller = RobotController(backend)
-    controller.connect()
+    try:
+        controller.connect()
+    except Exception as exc:
+        if settings.robot_backend == "lerobot" and not settings.robot_strict_connect:
+            LOGGER.exception("LeRobot backend is unavailable; exposing disconnected backend state.")
+            controller = RobotController(UnavailableRobot(settings.robot_backend, str(exc)))
+            controller.connect()
+        else:
+            raise
     return controller

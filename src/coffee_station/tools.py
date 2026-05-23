@@ -6,7 +6,7 @@ from typing import Any, Callable
 from google.genai import types
 
 from .camera import CameraManager
-from .hardware import diagnose_hardware
+from .hardware import diagnose_hardware, scan_feetech_motors
 from .robot import RobotController
 from .settings import Settings
 from .schemas import CalibrationPoint, ChatMessage, ScheduledAction, ToolEnvelope, WorldPose
@@ -34,6 +34,7 @@ class ToolRegistry:
             "discover_cameras": self.discover_cameras,
             "get_robot_state": self.get_robot_state,
             "diagnose_hardware": self.diagnose_hardware,
+            "scan_feetech_motors": self.scan_feetech_motors,
             "stop_robot": self.stop_robot,
             "list_scheduled_actions": self.list_scheduled_actions,
             "cancel_scheduled_action": self.cancel_scheduled_action,
@@ -167,6 +168,15 @@ class ToolRegistry:
                 parameters={"type": "object", "properties": {}},
             ),
             types.FunctionDeclaration(
+                name="scan_feetech_motors",
+                description="Scan a serial port for Feetech servo IDs using LeRobot's low-level bus scan.",
+                parameters={
+                    "type": "object",
+                    "properties": {"port": {"type": "string"}},
+                    "required": ["port"],
+                },
+            ),
+            types.FunctionDeclaration(
                 name="stop_robot",
                 description="Immediately stop the robot backend when supported. On basic LeRobot backends this may disconnect the robot.",
                 parameters={"type": "object", "properties": {}},
@@ -255,6 +265,7 @@ class ToolRegistry:
             "discover_cameras",
             "get_robot_state",
             "diagnose_hardware",
+            "scan_feetech_motors",
             "stop_robot",
             "list_scheduled_actions",
             "cancel_scheduled_action",
@@ -360,6 +371,9 @@ class ToolRegistry:
 
     def diagnose_hardware(self, session_id: str) -> dict[str, Any]:
         return diagnose_hardware(self.settings)
+
+    def scan_feetech_motors(self, session_id: str, port: str) -> dict[str, Any]:
+        return scan_feetech_motors(port)
 
     def stop_robot(self, session_id: str) -> dict[str, Any]:
         canceled = self.storage.cancel_queued_actions(session_id)

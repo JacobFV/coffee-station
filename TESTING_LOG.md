@@ -29,3 +29,18 @@
   - Tool `diagnose_hardware` returned the same result.
 - During desktop startup, observed the UI stream opened with `fps=1` because display FPS was incorrectly tied to agent auto-feed frequency. Fixed by adding a separate Display Hz control defaulting to `30`; Agent Hz still controls how often frames are inserted into the Gemini loop.
 - Restarted the desktop app after the Display Hz fix. Startup log confirmed `/api/cameras/0/stream?fps=30` returned `200`.
+- After plugging in the arm, serial enumeration found `/dev/cu.usbmodem5B415328371` with `USB VID:PID=1A86:55D3 SER=5B41532837`.
+- Attempted a programmatic LeRobot connection with `Settings(robot_backend='lerobot', lerobot_port=...)`; it incorrectly stayed in sim mode. Root cause: `Settings` used env aliases without `populate_by_name=True`, so field-name constructor overrides were ignored. Fixed before hardware commands.
+- After fixing settings, real LeRobot construction reached the Feetech bus and failed with `ModuleNotFoundError: No module named 'scservo_sdk'`. The plain `lerobot` optional dependency was insufficient for SO follower hardware; official docs require the Feetech extra. Updated the project optional dependency to `lerobot[feetech]>=0.4.1`.
+- Installed `lerobot[feetech]`; this installed `feetech-servo-sdk==1.0.0` and provided `scservo_sdk`.
+- Retried real connect on `/dev/cu.usbmodem5B415328371`; LeRobot opened the port but failed handshake because all expected servo IDs were missing:
+  - expected IDs: 1, 2, 3, 4, 5, 6
+  - found motors: `{}`
+- Ran `FeetechMotorsBus.scan_port('/dev/cu.usbmodem5B415328371')`; it scanned baud rates and returned `{}`. This confirms the USB adapter is present but no Feetech servos are responding on the bus.
+- Added `UnavailableRobot` so desktop startup with `ROBOT_BACKEND=lerobot` reports a disconnected/error backend instead of crashing when the bus is missing motors.
+- Added `/api/hardware/feetech-scan` and tool `scan_feetech_motors` for repeatable low-level bus scans.
+- Launched the app with `ROBOT_BACKEND=lerobot LEROBOT_PORT=/dev/cu.usbmodem5B415328371`; startup succeeded in unavailable mode and `/api/sessions/{id}` reported backend `lerobot`, `connected=False`, `unavailable=True`, with the exact missing motor ID error.
+- `/api/hardware/diagnostics` reported the configured port visible: 4 serial ports total, 1 USB serial port.
+- `/api/hardware/feetech-scan?port=/dev/cu.usbmodem5B415328371` returned `found: {}`.
+- Also scanned `/dev/tty.usbmodem5B415328371`; it returned `found: {}`.
+- Physical servo movement was not attempted because no servo IDs responded. Sending movement commands with zero detected motors would not be a valid hardware test and could hide the real bus/power/ID issue.

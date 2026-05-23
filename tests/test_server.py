@@ -32,3 +32,5 @@ def test_session_api_lifecycle(tmp_path):
 
         hardware = client.get("/api/hardware/diagnostics").json()
         assert "serial_ports" in hardware
+        scan = client.get("/api/hardware/feetech-scan", params={"port": "/dev/does-not-exist"}).json()
+        assert scan["ok"] is False

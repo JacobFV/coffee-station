@@ -96,3 +96,17 @@ def test_calibration_tools_compute_mean_offset(tmp_path):
     assert round(summary["offset"]["x"], 4) == 0.01
     assert round(summary["offset"]["y"], 4) == -0.02
     assert round(summary["offset"]["z"], 4) == 0.03
+
+
+def test_hardware_tools_report_diagnostics(tmp_path):
+    settings = Settings(data_dir=tmp_path, camera_indices="")
+    storage = Storage(tmp_path / "sessions.sqlite3")
+    session = storage.create_session(model=settings.gemini_model)
+    robot = RobotController(SimRobot())
+    robot.connect()
+    cameras = CameraManager(settings)
+    tools = ToolRegistry(robot, cameras, storage, settings)
+
+    diagnostics = tools.dispatch(session.id, "diagnose_hardware", {})
+
+    assert "serial_ports" in diagnostics
