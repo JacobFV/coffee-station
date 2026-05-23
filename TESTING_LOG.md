@@ -44,3 +44,13 @@
 - `/api/hardware/feetech-scan?port=/dev/cu.usbmodem5B415328371` returned `found: {}`.
 - Also scanned `/dev/tty.usbmodem5B415328371`; it returned `found: {}`.
 - Physical servo movement was not attempted because no servo IDs responded. Sending movement commands with zero detected motors would not be a valid hardware test and could hide the real bus/power/ID issue.
+
+## 2026-05-23 Replug Retry
+
+- User unplugged and replugged the arm/controller stack.
+- Serial enumeration still shows `/dev/cu.usbmodem5B415328371` / `/dev/tty.usbmodem5B415328371`, `USB VID:PID=1A86:55D3 SER=5B41532837`.
+- Low-level Feetech scan results after replug:
+  - `/dev/cu.usbmodem5B415328371`: `found: {}`
+  - `/dev/tty.usbmodem5B415328371`: `found: {}`
+- Direct strict LeRobot connection still fails with the same missing motor IDs 1-6 and found motor list `{}`.
+- Conclusion: the USB serial adapter/controller is visible to macOS, but the Feetech servo bus behind it is still not responding. This points to servo power, servo bus wiring, wrong controller connector, or servo ID/configuration rather than an app-level serial-port discovery issue.
