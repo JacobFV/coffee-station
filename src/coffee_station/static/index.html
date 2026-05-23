@@ -51,11 +51,20 @@
               <option value="offset_world_pose">Offset world pose</option>
               <option value="request_latest_frame">Latest frame</option>
               <option value="bundle_tool_calls">Bundle calls</option>
+              <option value="list_agent_skills">List skills</option>
+              <option value="activate_agent_skill">Activate skill</option>
+              <option value="record_calibration_point">Record calibration</option>
+              <option value="get_calibration">Get calibration</option>
+              <option value="clear_calibration">Clear calibration</option>
               <option value="cancel_queued_actions">Cancel queue</option>
             </select>
             <textarea id="toolArgs" rows="5" spellcheck="false">{}</textarea>
             <button id="runTool" type="button">Run Tool</button>
           </div>
+        </details>
+        <details class="skill-panel">
+          <summary>Skills</summary>
+          <div id="skillList" class="skill-list"></div>
         </details>
         <details class="queue-panel" open>
           <summary>Queue</summary>

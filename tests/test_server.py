@@ -25,3 +25,6 @@ def test_session_api_lifecycle(tmp_path):
 
         actions = client.get(f"/api/sessions/{session_id}/actions").json()
         assert actions["queued_actions"] == []
+
+        skills = client.get("/api/skills").json()
+        assert any(skill["name"] == "pose-table-6dof" for skill in skills["skills"])

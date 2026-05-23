@@ -15,6 +15,7 @@ from .camera import CameraManager
 from .robot import build_robot
 from .schemas import ChatMessage, SessionSnapshot
 from .settings import Settings
+from .skills import SkillLibrary
 from .storage import Storage
 from .tools import ToolRegistry
 
@@ -51,8 +52,9 @@ class AppState:
         self.storage = Storage(settings.db_path)
         self.cameras = CameraManager(settings)
         self.robot = build_robot(settings)
-        self.tools = ToolRegistry(self.robot, self.cameras, self.storage)
-        self.agent = AgentHarness(settings, self.storage, self.cameras, self.tools)
+        self.skills = SkillLibrary()
+        self.tools = ToolRegistry(self.robot, self.cameras, self.storage, self.skills)
+        self.agent = AgentHarness(settings, self.storage, self.cameras, self.tools, self.skills)
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -183,6 +185,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             ChatMessage(role="tool", content=f"{request.tool_name}: {result}", metadata={"manual": True, "result": result}),
         )
         return {"result": result}
+
+    @app.get("/api/skills")
+    def list_skills() -> dict[str, Any]:
+        return {"skills": [{"name": skill.name, "description": skill.description} for skill in state.skills.list()]}
+
+    @app.get("/api/skills/{name}")
+    def get_skill(name: str) -> dict[str, Any]:
+        skill = state.skills.get(name)
+        if skill is None:
+            raise HTTPException(status_code=404, detail="skill not found")
+        return {"skill": {"name": skill.name, "description": skill.description, "instructions": skill.body.strip()}}
 
     @app.get("/api/sessions/{session_id}/actions")
     def list_actions(session_id: str) -> dict[str, Any]:

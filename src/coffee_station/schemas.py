@@ -59,6 +59,19 @@ class FrameInfo(BaseModel):
     jpeg_base64: str | None = None
 
 
+class CalibrationPoint(BaseModel):
+    id: str = Field(default_factory=new_id)
+    session_id: str
+    believed_x: float
+    believed_y: float
+    believed_z: float
+    actual_x: float
+    actual_y: float
+    actual_z: float
+    note: str | None = None
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+
+
 class ChatMessage(BaseModel):
     id: str = Field(default_factory=new_id)
     role: Literal["system", "user", "agent", "tool"]

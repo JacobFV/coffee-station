@@ -7,7 +7,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Iterator
 
-from .schemas import CameraConfig, ChatMessage, ScheduledAction, SessionRecord
+from .schemas import CalibrationPoint, CameraConfig, ChatMessage, ScheduledAction, SessionRecord
 
 
 class Storage:
@@ -71,6 +71,20 @@ class Storage:
                     primary key(session_id, camera_id),
                     foreign key(session_id) references sessions(id)
                 );
+                create table if not exists calibration_points (
+                    id text primary key,
+                    session_id text not null,
+                    believed_x real not null,
+                    believed_y real not null,
+                    believed_z real not null,
+                    actual_x real not null,
+                    actual_y real not null,
+                    actual_z real not null,
+                    note text,
+                    created_at text not null,
+                    foreign key(session_id) references sessions(id)
+                );
+                create index if not exists idx_calibration_session on calibration_points(session_id, created_at);
                 """
             )
 
@@ -253,6 +267,42 @@ class Storage:
             ).fetchall()
         return [self._action_from_row(row) for row in rows]
 
+    def add_calibration_point(self, point: CalibrationPoint) -> CalibrationPoint:
+        with self.connect() as conn:
+            conn.execute(
+                """
+                insert into calibration_points(
+                    id, session_id, believed_x, believed_y, believed_z, actual_x, actual_y, actual_z, note, created_at
+                ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    point.id,
+                    point.session_id,
+                    point.believed_x,
+                    point.believed_y,
+                    point.believed_z,
+                    point.actual_x,
+                    point.actual_y,
+                    point.actual_z,
+                    point.note,
+                    point.created_at.isoformat(),
+                ),
+            )
+        return point
+
+    def list_calibration_points(self, session_id: str) -> list[CalibrationPoint]:
+        with self.connect() as conn:
+            rows = conn.execute(
+                "select * from calibration_points where session_id=? order by created_at asc",
+                (session_id,),
+            ).fetchall()
+        return [self._calibration_from_row(row) for row in rows]
+
+    def clear_calibration_points(self, session_id: str) -> int:
+        with self.connect() as conn:
+            cursor = conn.execute("delete from calibration_points where session_id=?", (session_id,))
+            return cursor.rowcount
+
     @staticmethod
     def _session_from_row(row: sqlite3.Row) -> SessionRecord:
         return SessionRecord(
@@ -286,4 +336,19 @@ class Storage:
             status=row["status"],
             result=json.loads(row["result"]) if row["result"] else None,
             error=row["error"],
+        )
+
+    @staticmethod
+    def _calibration_from_row(row: sqlite3.Row) -> CalibrationPoint:
+        return CalibrationPoint(
+            id=row["id"],
+            session_id=row["session_id"],
+            believed_x=row["believed_x"],
+            believed_y=row["believed_y"],
+            believed_z=row["believed_z"],
+            actual_x=row["actual_x"],
+            actual_y=row["actual_y"],
+            actual_z=row["actual_z"],
+            note=row["note"],
+            created_at=datetime.fromisoformat(row["created_at"]),
         )

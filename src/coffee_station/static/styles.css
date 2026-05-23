@@ -154,14 +154,16 @@ button.danger {
 }
 
 .tool-panel,
-.queue-panel {
+.queue-panel,
+.skill-panel {
   border: 1px solid var(--line);
   border-radius: 6px;
   background: #111318;
 }
 
 .tool-panel summary,
-.queue-panel summary {
+.queue-panel summary,
+.skill-panel summary {
   cursor: pointer;
   padding: 8px 10px;
   color: var(--muted);
@@ -192,6 +194,27 @@ button.danger {
   max-height: 132px;
   overflow: auto;
   padding: 0 8px 8px;
+}
+
+.skill-list {
+  display: grid;
+  gap: 8px;
+  max-height: 170px;
+  overflow: auto;
+  padding: 0 8px 8px;
+}
+
+.skill-item {
+  border-top: 1px solid #262a33;
+  padding-top: 7px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.skill-item strong {
+  display: block;
+  color: var(--text);
+  margin-bottom: 3px;
 }
 
 .queue-item {

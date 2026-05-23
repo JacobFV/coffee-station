@@ -11,6 +11,7 @@ from google.genai import types
 from .camera import CameraManager
 from .schemas import ChatMessage, SessionRecord
 from .settings import Settings
+from .skills import SkillLibrary
 from .storage import Storage
 from .tools import ToolRegistry
 
@@ -22,15 +23,18 @@ Use world-space IK tools for object- or camera-grounded movement.
 Prefer small, reversible movements, and schedule multi-step motion with bundle_tool_calls when timing matters.
 A camera frame is normally included on each loop step according to camera feed settings.
 Report concise observations and tool decisions. Never claim a movement happened unless a tool result confirms it.
+You have high-level AgentSkills-style procedures. Use the skills index to decide what to activate, and follow activated skill instructions exactly.
 """
 
 
 class AgentHarness:
-    def __init__(self, settings: Settings, storage: Storage, cameras: CameraManager, tools: ToolRegistry) -> None:
+    def __init__(self, settings: Settings, storage: Storage, cameras: CameraManager, tools: ToolRegistry,
+                 skills: SkillLibrary | None = None) -> None:
         self.settings = settings
         self.storage = storage
         self.cameras = cameras
         self.tools = tools
+        self.skills = skills or SkillLibrary()
         self.client = genai.Client(api_key=settings.gemini_api_key) if settings.gemini_api_key else None
         self.active_session_id: str | None = None
         self.task: asyncio.Task[None] | None = None
@@ -172,6 +176,13 @@ class AgentHarness:
     def _build_contents(self, session_id: str) -> list[types.Content]:
         messages = self.storage.list_messages(session_id, limit=50)
         contents: list[types.Content] = []
+        conversation_text = "\n".join(f"{message.role}: {message.content}" for message in messages[-12:])
+        active_skills = self.skills.activate_for_text(conversation_text)
+        skill_index = "\n".join(skill.index_line() for skill in self.skills.list())
+        skill_context = "Available skills:\n" + skill_index
+        if active_skills:
+            skill_context += "\n\nActivated skill instructions:\n" + "\n\n".join(skill.prompt_block() for skill in active_skills)
+        contents.append(types.Content(role="user", parts=[types.Part(text=skill_context)]))
         for message in messages:
             if message.role == "system":
                 contents.append(types.Content(role="user", parts=[types.Part(text=f"System instruction: {message.content}")]))

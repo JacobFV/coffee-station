@@ -22,6 +22,7 @@ const els = {
   toolSelect: document.getElementById("toolSelect"),
   toolArgs: document.getElementById("toolArgs"),
   runTool: document.getElementById("runTool"),
+  skillList: document.getElementById("skillList"),
   queueList: document.getElementById("queueList"),
   messages: document.getElementById("messages"),
   chatForm: document.getElementById("chatForm"),
@@ -42,6 +43,7 @@ async function api(path, options = {}) {
 async function boot() {
   await refreshSessions();
   await refreshCameras();
+  await refreshSkills();
   startPolling();
 }
 
@@ -113,6 +115,17 @@ function renderQueue(actions) {
     });
     row.append(label, cancel);
     els.queueList.appendChild(row);
+  }
+}
+
+async function refreshSkills() {
+  const data = await api("/api/skills");
+  els.skillList.innerHTML = "";
+  for (const skill of data.skills) {
+    const row = document.createElement("div");
+    row.className = "skill-item";
+    row.innerHTML = `<strong>${skill.name}</strong><span>${skill.description}</span>`;
+    els.skillList.appendChild(row);
   }
 }
 
@@ -245,6 +258,19 @@ els.toolSelect.addEventListener("change", () => {
     set_world_pose: { x: 0.18, y: 0, z: 0.14, pitch: -25, duration_s: 0.5 },
     offset_world_pose: { dx: 0.01, dy: 0, dz: 0, duration_s: 0.25 },
     request_latest_frame: { camera_id: state.activeCameraId || 0, refresh: true },
+    list_agent_skills: {},
+    activate_agent_skill: { name: "pour-coffee-cup-to-cup" },
+    record_calibration_point: {
+      believed_x: 0.18,
+      believed_y: 0,
+      believed_z: 0.14,
+      actual_x: 0.18,
+      actual_y: 0,
+      actual_z: 0.14,
+      note: "measured from camera or operator"
+    },
+    get_calibration: {},
+    clear_calibration: {},
     bundle_tool_calls: {
       calls: [
         { tool_name: "offset_world_pose", args: { dz: 0.02, duration_s: 0.25 }, offset_s: 0 },

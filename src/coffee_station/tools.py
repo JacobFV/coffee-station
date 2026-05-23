@@ -7,15 +7,18 @@ from google.genai import types
 
 from .camera import CameraManager
 from .robot import RobotController
-from .schemas import ChatMessage, ScheduledAction, ToolEnvelope, WorldPose
+from .schemas import CalibrationPoint, ChatMessage, ScheduledAction, ToolEnvelope, WorldPose
+from .skills import SkillLibrary
 from .storage import Storage
 
 
 class ToolRegistry:
-    def __init__(self, robot: RobotController, cameras: CameraManager, storage: Storage) -> None:
+    def __init__(self, robot: RobotController, cameras: CameraManager, storage: Storage,
+                 skills: SkillLibrary | None = None) -> None:
         self.robot = robot
         self.cameras = cameras
         self.storage = storage
+        self.skills = skills or SkillLibrary()
         self._tools: dict[str, Callable[..., dict[str, Any]]] = {
             "set_joint_pose": self.set_joint_pose,
             "set_world_pose": self.set_world_pose,
@@ -30,6 +33,11 @@ class ToolRegistry:
             "list_scheduled_actions": self.list_scheduled_actions,
             "cancel_scheduled_action": self.cancel_scheduled_action,
             "cancel_queued_actions": self.cancel_queued_actions,
+            "list_agent_skills": self.list_agent_skills,
+            "activate_agent_skill": self.activate_agent_skill,
+            "record_calibration_point": self.record_calibration_point,
+            "get_calibration": self.get_calibration,
+            "clear_calibration": self.clear_calibration,
             "pause_session": self.pause_session,
             "resume_session": self.resume_session,
         }
@@ -173,6 +181,47 @@ class ToolRegistry:
                 parameters={"type": "object", "properties": {}},
             ),
             types.FunctionDeclaration(
+                name="list_agent_skills",
+                description="List high-level procedural skills available to the arm agent.",
+                parameters={"type": "object", "properties": {}},
+            ),
+            types.FunctionDeclaration(
+                name="activate_agent_skill",
+                description="Load the full instructions for one high-level procedural skill.",
+                parameters={
+                    "type": "object",
+                    "properties": {"name": {"type": "string"}},
+                    "required": ["name"],
+                },
+            ),
+            types.FunctionDeclaration(
+                name="record_calibration_point",
+                description="Record a comparison between believed commanded gripper coordinates and measured actual gripper coordinates.",
+                parameters={
+                    "type": "object",
+                    "properties": {
+                        "believed_x": {"type": "number"},
+                        "believed_y": {"type": "number"},
+                        "believed_z": {"type": "number"},
+                        "actual_x": {"type": "number"},
+                        "actual_y": {"type": "number"},
+                        "actual_z": {"type": "number"},
+                        "note": {"type": "string"},
+                    },
+                    "required": ["believed_x", "believed_y", "believed_z", "actual_x", "actual_y", "actual_z"],
+                },
+            ),
+            types.FunctionDeclaration(
+                name="get_calibration",
+                description="Return calibration comparison points and the current mean XYZ actual-minus-believed offset.",
+                parameters={"type": "object", "properties": {}},
+            ),
+            types.FunctionDeclaration(
+                name="clear_calibration",
+                description="Clear all calibration comparison points for this session.",
+                parameters={"type": "object", "properties": {}},
+            ),
+            types.FunctionDeclaration(
                 name="pause_session",
                 description="Pause autonomous agent steps for this session. Already scheduled robot actions may continue if due.",
                 parameters={"type": "object", "properties": {}},
@@ -199,6 +248,11 @@ class ToolRegistry:
             "list_scheduled_actions",
             "cancel_scheduled_action",
             "cancel_queued_actions",
+            "list_agent_skills",
+            "activate_agent_skill",
+            "record_calibration_point",
+            "get_calibration",
+            "clear_calibration",
             "pause_session",
             "resume_session",
         }
@@ -308,6 +362,65 @@ class ToolRegistry:
 
     def cancel_queued_actions(self, session_id: str) -> dict[str, Any]:
         return {"canceled": self.storage.cancel_queued_actions(session_id)}
+
+    def list_agent_skills(self, session_id: str) -> dict[str, Any]:
+        return {"skills": [{"name": skill.name, "description": skill.description} for skill in self.skills.list()]}
+
+    def activate_agent_skill(self, session_id: str, name: str) -> dict[str, Any]:
+        skill = self.skills.get(name)
+        if skill is None:
+            raise ValueError(f"unknown skill: {name}")
+        return {"skill": {"name": skill.name, "description": skill.description, "instructions": skill.body.strip()}}
+
+    def record_calibration_point(
+        self,
+        session_id: str,
+        believed_x: float,
+        believed_y: float,
+        believed_z: float,
+        actual_x: float,
+        actual_y: float,
+        actual_z: float,
+        note: str | None = None,
+    ) -> dict[str, Any]:
+        point = self.storage.add_calibration_point(
+            CalibrationPoint(
+                session_id=session_id,
+                believed_x=believed_x,
+                believed_y=believed_y,
+                believed_z=believed_z,
+                actual_x=actual_x,
+                actual_y=actual_y,
+                actual_z=actual_z,
+                note=note,
+            )
+        )
+        return {"point": point.model_dump(), "calibration": self._calibration_summary(session_id)}
+
+    def get_calibration(self, session_id: str) -> dict[str, Any]:
+        return self._calibration_summary(session_id)
+
+    def clear_calibration(self, session_id: str) -> dict[str, Any]:
+        return {"cleared": self.storage.clear_calibration_points(session_id)}
+
+    def _calibration_summary(self, session_id: str) -> dict[str, Any]:
+        points = self.storage.list_calibration_points(session_id)
+        if not points:
+            return {
+                "sample_count": 0,
+                "offset": {"x": 0.0, "y": 0.0, "z": 0.0},
+                "points": [],
+                "guidance": "No calibration points recorded. Use record_calibration_point.",
+            }
+        dx = sum(point.actual_x - point.believed_x for point in points) / len(points)
+        dy = sum(point.actual_y - point.believed_y for point in points) / len(points)
+        dz = sum(point.actual_z - point.believed_z for point in points) / len(points)
+        return {
+            "sample_count": len(points),
+            "offset": {"x": dx, "y": dy, "z": dz},
+            "compensation_rule": "For a real target, command target minus this offset.",
+            "points": [point.model_dump() for point in points],
+        }
 
     def pause_session(self, session_id: str) -> dict[str, Any]:
         self.storage.update_session_status(session_id, "paused")

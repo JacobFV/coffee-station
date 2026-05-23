@@ -54,3 +54,45 @@ def test_stop_robot_cancels_queued_actions(tmp_path):
     assert result["stopped"] is True
     assert result["canceled_queued_actions"] == 1
     assert storage.queued_actions(session.id) == []
+
+
+def test_calibration_tools_compute_mean_offset(tmp_path):
+    settings = Settings(data_dir=tmp_path, camera_indices="")
+    storage = Storage(tmp_path / "sessions.sqlite3")
+    session = storage.create_session(model=settings.gemini_model)
+    robot = RobotController(SimRobot())
+    robot.connect()
+    cameras = CameraManager(settings)
+    tools = ToolRegistry(robot, cameras, storage)
+
+    tools.dispatch(
+        session.id,
+        "record_calibration_point",
+        {
+            "believed_x": 0.10,
+            "believed_y": 0.20,
+            "believed_z": 0.30,
+            "actual_x": 0.11,
+            "actual_y": 0.18,
+            "actual_z": 0.33,
+        },
+    )
+    tools.dispatch(
+        session.id,
+        "record_calibration_point",
+        {
+            "believed_x": 0.20,
+            "believed_y": 0.10,
+            "believed_z": 0.40,
+            "actual_x": 0.21,
+            "actual_y": 0.08,
+            "actual_z": 0.43,
+        },
+    )
+
+    summary = tools.dispatch(session.id, "get_calibration", {})
+
+    assert summary["sample_count"] == 2
+    assert round(summary["offset"]["x"], 4) == 0.01
+    assert round(summary["offset"]["y"], 4) == -0.02
+    assert round(summary["offset"]["z"], 4) == 0.03
