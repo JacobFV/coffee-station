@@ -2,7 +2,9 @@ const state = {
   activeSessionId: null,
   activeCameraId: null,
   streamUrl: null,
-  pollTimer: null
+  pollTimer: null,
+  sessionsSignature: "",
+  messagesSignature: ""
 };
 
 const els = {
@@ -53,18 +55,23 @@ async function boot() {
   startPolling();
 }
 
-async function refreshSessions() {
+async function refreshSessions({ refreshActive = true } = {}) {
   const data = await api("/api/sessions");
-  state.activeSessionId = data.active_session_id || data.sessions[0]?.id || null;
-  els.sessionSelect.innerHTML = "";
-  for (const session of data.sessions) {
-    const option = document.createElement("option");
-    option.value = session.id;
-    option.textContent = session.title;
-    option.selected = session.id === state.activeSessionId;
-    els.sessionSelect.appendChild(option);
+  const nextActive = data.active_session_id || data.sessions[0]?.id || null;
+  const signature = data.sessions.map((s) => `${s.id}:${s.title}`).join("|") + `#${nextActive}`;
+  if (signature !== state.sessionsSignature) {
+    state.sessionsSignature = signature;
+    els.sessionSelect.innerHTML = "";
+    for (const session of data.sessions) {
+      const option = document.createElement("option");
+      option.value = session.id;
+      option.textContent = session.title;
+      option.selected = session.id === nextActive;
+      els.sessionSelect.appendChild(option);
+    }
   }
-  if (state.activeSessionId) {
+  state.activeSessionId = nextActive;
+  if (refreshActive && state.activeSessionId) {
     await refreshSession(state.activeSessionId);
   }
 }
@@ -103,10 +110,14 @@ async function refreshSession(sessionId) {
 }
 
 function renderMessages(messages) {
+  const visible = messages.filter((m) => m.role !== "system");
+  const signature = visible.map((m) => `${m.id || m.created_at}:${m.content.length}`).join("|");
+  if (signature === state.messagesSignature) return;
+  state.messagesSignature = signature;
+
   const atBottom = els.messages.scrollTop + els.messages.clientHeight >= els.messages.scrollHeight - 30;
   els.messages.innerHTML = "";
-  for (const message of messages) {
-    if (message.role === "system") continue;
+  for (const message of visible) {
     const row = document.createElement("div");
     row.className = `message ${message.role}`;
     const meta = document.createElement("div");
@@ -235,12 +246,9 @@ function setCameraStream() {
 function startPolling() {
   clearInterval(state.pollTimer);
   state.pollTimer = setInterval(async () => {
-    if (state.activeSessionId) {
-      try {
-        await refreshSession(state.activeSessionId);
-        await refreshSessions();
-      } catch (err) { /* ignore transient */ }
-    }
+    try {
+      await refreshSessions({ refreshActive: !!state.activeSessionId });
+    } catch (err) { /* ignore transient */ }
   }, 1500);
 }
 
@@ -256,7 +264,12 @@ function closeDrawer() {
   els.drawerScrim.hidden = true;
 }
 
-els.settingsBtn.addEventListener("click", openDrawer);
+function toggleDrawer() {
+  if (els.drawer.hidden) openDrawer();
+  else closeDrawer();
+}
+
+els.settingsBtn.addEventListener("click", toggleDrawer);
 els.drawerClose.addEventListener("click", closeDrawer);
 els.drawerScrim.addEventListener("click", closeDrawer);
 document.addEventListener("keydown", (e) => {
@@ -308,6 +321,7 @@ els.newSession.addEventListener("click", async () => {
   const name = `Session ${new Date().toLocaleString()}`;
   const data = await api("/api/sessions", { method: "POST", body: JSON.stringify({ title: name }) });
   state.activeSessionId = data.session.id;
+  state.sessionsSignature = "";
   await refreshSessions();
 });
 
@@ -346,7 +360,16 @@ els.chatInput.addEventListener("keydown", (e) => {
 els.chatForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   const content = els.chatInput.value.trim();
-  if (!content || !state.activeSessionId) return;
+  if (!content) return;
+  if (!state.activeSessionId) {
+    const data = await api("/api/sessions", {
+      method: "POST",
+      body: JSON.stringify({ title: `Session ${new Date().toLocaleString()}` })
+    });
+    state.activeSessionId = data.session.id;
+    state.sessionsSignature = "";
+    await refreshSessions({ refreshActive: false });
+  }
   els.chatInput.value = "";
   autoResizeChat();
   await api(`/api/sessions/${state.activeSessionId}/messages`, {

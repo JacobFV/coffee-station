@@ -506,6 +506,8 @@ input[type="number"]:focus, input[type="text"]:focus, textarea:focus {
   to { opacity: 1; }
 }
 
+.drawer[hidden], .drawer-scrim[hidden] { display: none !important; }
+
 .drawer {
   position: fixed;
   top: 80px;
