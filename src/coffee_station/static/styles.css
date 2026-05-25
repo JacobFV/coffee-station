@@ -77,6 +77,18 @@ button { cursor: pointer; }
   filter: saturate(1.05) contrast(1.02);
 }
 
+.virtual-so101-host,
+.virtual-so101-host canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.virtual-camera-tile {
+  background: #030405;
+  cursor: default;
+}
+
 .camera-tile.is-focused {
   outline: 3px solid #facc15;
   outline-offset: -3px;

@@ -411,7 +411,7 @@ class ToolRegistry:
 
     def discover_cameras(self, session_id: str) -> dict[str, Any]:
         discovered = self.cameras.discover()
-        for config in self.cameras.list_configs():
+        for config in self.cameras.list_agent_configs():
             self.storage.upsert_camera_config(session_id, config)
         return {"discovered": discovered, "cameras": self.cameras.status()}
 

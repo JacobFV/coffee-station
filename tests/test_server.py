@@ -22,7 +22,9 @@ def test_session_api_lifecycle(tmp_path):
 
         cameras = client.get("/api/cameras").json()
         assert "camera" in cameras["cameras"][0]
+        assert any(item["camera"]["kind"] == "virtual" and item["camera"]["agent_visible"] is False for item in cameras["cameras"])
         assert client.get("/api/cameras/999/stream").status_code == 404
+        assert client.post("/api/cameras/configure", json={"camera_id": -101, "enabled": True}).status_code == 400
 
         actions = client.get(f"/api/sessions/{session_id}/actions").json()
         assert actions["queued_actions"] == []

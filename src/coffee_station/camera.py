@@ -138,6 +138,8 @@ class CameraDevice:
 
 
 class CameraManager:
+    VIRTUAL_SO101_CAMERA_ID = -101
+
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
         self.devices: dict[int, CameraDevice] = {
@@ -149,6 +151,28 @@ class CameraManager:
 
     def list_configs(self) -> list[CameraConfig]:
         return [device.config for device in self.devices.values()]
+
+    def list_agent_configs(self) -> list[CameraConfig]:
+        return [config for config in self.list_configs() if config.agent_visible]
+
+    def display_status(self) -> list[dict[str, Any]]:
+        return [
+            *self.status(agent_visible_only=False),
+            {
+                "camera": CameraConfig(
+                    camera_id=self.VIRTUAL_SO101_CAMERA_ID,
+                    enabled=True,
+                    auto_include=False,
+                    frequency_hz=0.0,
+                    label="Virtual SO-101 believed pose",
+                    kind="virtual",
+                    agent_visible=False,
+                ).model_dump(),
+                "open": True,
+                "open_error": None,
+                "latest_frame": None,
+            },
+        ]
 
     def discover(self) -> list[dict[str, Any]]:
         discovered: list[dict[str, Any]] = []
@@ -193,9 +217,11 @@ class CameraManager:
                 device.config.label = label
             return {"camera": device.config.model_dump(), "open_error": device.open_error}
 
-    def status(self) -> list[dict[str, Any]]:
+    def status(self, agent_visible_only: bool = True) -> list[dict[str, Any]]:
         statuses: list[dict[str, Any]] = []
         for device in self.devices.values():
+            if agent_visible_only and not device.config.agent_visible:
+                continue
             latest = device.latest.info(include_bytes=False).model_dump() if device.latest else None
             statuses.append(
                 {
@@ -209,7 +235,7 @@ class CameraManager:
 
     def latest_frame(self, camera_id: int, include_bytes: bool = True, refresh: bool = True) -> FrameInfo | None:
         device = self.devices.get(camera_id)
-        if device is None:
+        if device is None or not device.config.agent_visible:
             return None
         frame = device.read() if refresh else device.latest
         if frame is None:
@@ -218,14 +244,14 @@ class CameraManager:
 
     def latest_jpeg(self, camera_id: int, refresh: bool = True) -> bytes | None:
         device = self.devices.get(camera_id)
-        if device is None:
+        if device is None or not device.config.agent_visible:
             return None
         frame = device.read() if refresh else device.latest
         return None if frame is None else frame.jpeg
 
     def raw_frame(self, camera_id: int, refresh: bool = True) -> CapturedFrame | None:
         device = self.devices.get(camera_id)
-        if device is None:
+        if device is None or not device.config.agent_visible:
             return None
         return device.read() if refresh else device.latest
 
@@ -256,7 +282,7 @@ class CameraManager:
         frames: list[CapturedFrame] = []
         for camera_id, device in self.devices.items():
             config = device.config
-            if not config.enabled or not config.auto_include:
+            if not config.enabled or not config.auto_include or not config.agent_visible:
                 continue
             frequency = config.frequency_hz
             if frequency <= 0:

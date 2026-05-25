@@ -210,9 +210,10 @@ async function refreshSkills() {
 async function refreshCameras() {
   const data = await api("/api/cameras");
   const cameras = data.cameras.map((s) => s.camera);
+  const configurableCameras = cameras.filter((camera) => camera.agent_visible !== false);
 
   els.cameraSelect.innerHTML = "";
-  for (const camera of cameras) {
+  for (const camera of configurableCameras) {
     const option = document.createElement("option");
     option.value = camera.camera_id;
     option.textContent = camera.label || `Camera ${camera.camera_id}`;
@@ -223,15 +224,18 @@ async function refreshCameras() {
   const idsChanged = ids.join(",") !== state.cameraIds.join(",");
   state.cameraIds = ids;
 
-  if (cameras.length > 0) {
-    const stillPresent = state.activeCameraId != null && ids.includes(state.activeCameraId);
-    if (!stillPresent) state.activeCameraId = cameras[0].camera_id;
-    const focused = cameras.find((c) => c.camera_id === state.activeCameraId) || cameras[0];
+  if (configurableCameras.length > 0) {
+    const configurableIds = configurableCameras.map((c) => c.camera_id);
+    const stillPresent = state.activeCameraId != null && configurableIds.includes(state.activeCameraId);
+    if (!stillPresent) state.activeCameraId = configurableCameras[0].camera_id;
+    const focused = configurableCameras.find((c) => c.camera_id === state.activeCameraId) || configurableCameras[0];
     els.cameraSelect.value = String(state.activeCameraId);
     els.autoInclude.checked = focused.auto_include;
     els.frequency.value = focused.frequency_hz;
+    els.applyCamera.disabled = false;
   } else {
     state.activeCameraId = null;
+    els.applyCamera.disabled = true;
   }
 
   if (idsChanged) rebuildCameraGrid(cameras);
@@ -253,18 +257,29 @@ function rebuildCameraGrid(cameras) {
     const tile = document.createElement("div");
     tile.className = "camera-tile";
     tile.dataset.cameraId = String(camera.camera_id);
-    const img = document.createElement("img");
-    img.alt = camera.label || `Camera ${camera.camera_id}`;
-    img.src = `/api/cameras/${camera.camera_id}/stream?fps=${encodeURIComponent(fps)}`;
+    if (camera.kind === "virtual") {
+      tile.classList.add("virtual-camera-tile");
+      const host = document.createElement("div");
+      host.className = "virtual-so101-host";
+      host.dataset.virtualCamera = "so101";
+      tile.appendChild(host);
+    } else {
+      const img = document.createElement("img");
+      img.alt = camera.label || `Camera ${camera.camera_id}`;
+      img.src = `/api/cameras/${camera.camera_id}/stream?fps=${encodeURIComponent(fps)}`;
+      tile.appendChild(img);
+    }
     const label = document.createElement("div");
     label.className = "camera-tile-label";
     label.textContent = camera.label || `Camera ${camera.camera_id}`;
-    tile.append(img, label);
-    tile.addEventListener("click", () => {
-      state.activeCameraId = camera.camera_id;
-      els.cameraSelect.value = String(camera.camera_id);
-      updateFocusedTile();
-    });
+    tile.appendChild(label);
+    if (camera.agent_visible !== false) {
+      tile.addEventListener("click", () => {
+        state.activeCameraId = camera.camera_id;
+        els.cameraSelect.value = String(camera.camera_id);
+        updateFocusedTile();
+      });
+    }
     els.cameraGrid.appendChild(tile);
     state.cameraTiles.set(camera.camera_id, tile);
   }
@@ -340,10 +355,11 @@ els.scanCameras.addEventListener("click", async () => {
 });
 
 els.applyCamera.addEventListener("click", async () => {
+  if (state.activeCameraId == null) return;
   await api("/api/cameras/configure", {
     method: "POST",
     body: JSON.stringify({
-      camera_id: Number(els.cameraSelect.value),
+      camera_id: state.activeCameraId,
       enabled: true,
       auto_include: els.autoInclude.checked,
       frequency_hz: Number(els.frequency.value)

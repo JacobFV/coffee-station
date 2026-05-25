@@ -148,7 +148,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.get("/api/cameras")
     def list_cameras() -> dict[str, Any]:
-        return {"cameras": state.cameras.status()}
+        return {"cameras": state.cameras.display_status()}
 
     @app.post("/api/cameras/discover")
     def discover_cameras() -> dict[str, Any]:
@@ -156,10 +156,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if state.agent.active_session_id:
             for config in state.cameras.list_configs():
                 state.storage.upsert_camera_config(state.agent.active_session_id, config)
-        return {"discovered": discovered, "cameras": state.cameras.status()}
+        return {"discovered": discovered, "cameras": state.cameras.display_status()}
 
     @app.post("/api/cameras/configure")
     def configure_camera(request: CameraConfigureRequest) -> dict[str, Any]:
+        if request.camera_id == state.cameras.VIRTUAL_SO101_CAMERA_ID:
+            raise HTTPException(status_code=400, detail="virtual SO-101 camera is display-only")
         result = state.cameras.configure(
             request.camera_id,
             enabled=request.enabled,
@@ -207,6 +209,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if frame is None:
             raise HTTPException(status_code=404, detail="frame unavailable")
         return {"frame": frame.model_dump()}
+
+    @app.get("/api/robot/state")
+    def robot_state() -> dict[str, Any]:
+        return state.robot.state()
 
     @app.post("/api/tools/call")
     def call_tool(request: ToolCallRequest) -> dict[str, Any]:

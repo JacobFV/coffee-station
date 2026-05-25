@@ -110,3 +110,19 @@ def test_hardware_tools_report_diagnostics(tmp_path):
     diagnostics = tools.dispatch(session.id, "diagnose_hardware", {})
 
     assert "serial_ports" in diagnostics
+
+
+def test_agent_camera_tools_exclude_virtual_display_camera(tmp_path):
+    settings = Settings(data_dir=tmp_path, camera_indices="")
+    storage = Storage(tmp_path / "sessions.sqlite3")
+    session = storage.create_session(model=settings.gemini_model)
+    robot = RobotController(SimRobot())
+    robot.connect()
+    cameras = CameraManager(settings)
+    tools = ToolRegistry(robot, cameras, storage, settings)
+
+    listed = tools.dispatch(session.id, "list_cameras", {})
+    ids = [item["camera"]["camera_id"] for item in listed["cameras"]]
+
+    assert cameras.VIRTUAL_SO101_CAMERA_ID not in ids
+    assert tools.dispatch(session.id, "request_latest_frame", {"camera_id": cameras.VIRTUAL_SO101_CAMERA_ID})["frame"] is None

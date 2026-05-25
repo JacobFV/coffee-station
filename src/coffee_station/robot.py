@@ -282,6 +282,7 @@ class RobotController:
         self.backend = backend
         self.ik = ik or SimpleArmIK()
         self.current_world_pose = WorldPose(x=0.18, y=0.0, z=0.14, pitch=-25.0)
+        self.current_joint_pose = [0.0, -25.0, 35.0, -10.0, 0.0, 0.0]
         self.arm_calibration: ArmCalibration | None = None
         self._joint_history: deque[tuple[float, list[float]]] = deque(maxlen=100)
 
@@ -293,7 +294,8 @@ class RobotController:
 
     def set_joint_pose(self, joints: list[float], duration_s: float = 0.5) -> dict[str, Any]:
         result = self.backend.set_joint_pose(JointPose(joints=joints), duration_s=duration_s)
-        self._joint_history.append((time.time(), list(joints)))
+        self.current_joint_pose = list(result.get("joints", joints))
+        self._joint_history.append((time.time(), list(self.current_joint_pose)))
         return result
 
     def stop(self) -> dict[str, Any]:
@@ -302,6 +304,7 @@ class RobotController:
     def set_world_pose(self, pose: WorldPose, duration_s: float = 0.5) -> dict[str, Any]:
         joint_pose = self.ik.solve(pose)
         result = self.backend.set_joint_pose(joint_pose, duration_s=duration_s)
+        self.current_joint_pose = list(joint_pose.joints)
         self._joint_history.append((time.time(), list(joint_pose.joints)))
         self.current_world_pose = pose
         result["ik_joint_pose"] = joint_pose.model_dump()
@@ -316,6 +319,11 @@ class RobotController:
     def state(self) -> dict[str, Any]:
         data = self.backend.get_state()
         data["current_world_pose"] = self.current_world_pose.model_dump()
+        data["believed_joint_pose"] = {
+            "joints": list(self.current_joint_pose),
+            "units": "degrees",
+            "joint_names": ["shoulder_pan", "shoulder_lift", "elbow_flex", "wrist_flex", "wrist_roll", "gripper"],
+        }
         data["ik_geometry"] = {
             "base_height_m": self.ik.geometry.base_height_m,
             "shoulder_to_elbow_m": self.ik.geometry.shoulder_to_elbow_m,
