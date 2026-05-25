@@ -1,7 +1,8 @@
 const state = {
   activeSessionId: null,
   activeCameraId: null,
-  streamUrl: null,
+  cameraIds: [],
+  cameraTiles: new Map(),
   pollTimer: null,
   sessionsSignature: "",
   messagesSignature: ""
@@ -17,7 +18,7 @@ const els = {
   applyCamera: document.getElementById("applyCamera"),
   scanCameras: document.getElementById("scanCameras"),
   stopRobot: document.getElementById("stopRobot"),
-  cameraFeed: document.getElementById("cameraFeed"),
+  cameraGrid: document.getElementById("cameraGrid"),
   noFrame: document.getElementById("noFrame"),
   newSession: document.getElementById("newSession"),
   sessionToggle: document.getElementById("sessionToggle"),
@@ -208,39 +209,85 @@ async function refreshSkills() {
 
 async function refreshCameras() {
   const data = await api("/api/cameras");
+  const cameras = data.cameras.map((s) => s.camera);
+
   els.cameraSelect.innerHTML = "";
-  for (const status of data.cameras) {
-    const camera = status.camera;
+  for (const camera of cameras) {
     const option = document.createElement("option");
     option.value = camera.camera_id;
     option.textContent = camera.label || `Camera ${camera.camera_id}`;
     els.cameraSelect.appendChild(option);
   }
-  if (data.cameras.length > 0) {
-    const camera = data.cameras[0].camera;
-    state.activeCameraId = camera.camera_id;
-    els.cameraSelect.value = String(camera.camera_id);
-    els.autoInclude.checked = camera.auto_include;
-    els.frequency.value = camera.frequency_hz;
-    setCameraStream();
+
+  const ids = cameras.map((c) => c.camera_id);
+  const idsChanged = ids.join(",") !== state.cameraIds.join(",");
+  state.cameraIds = ids;
+
+  if (cameras.length > 0) {
+    const stillPresent = state.activeCameraId != null && ids.includes(state.activeCameraId);
+    if (!stillPresent) state.activeCameraId = cameras[0].camera_id;
+    const focused = cameras.find((c) => c.camera_id === state.activeCameraId) || cameras[0];
+    els.cameraSelect.value = String(state.activeCameraId);
+    els.autoInclude.checked = focused.auto_include;
+    els.frequency.value = focused.frequency_hz;
+  } else {
+    state.activeCameraId = null;
+  }
+
+  if (idsChanged) rebuildCameraGrid(cameras);
+  updateFocusedTile();
+  updateNoFrameVisibility();
+}
+
+function rebuildCameraGrid(cameras) {
+  const fps = Math.max(1, Math.min(60, Number(els.displayFps.value) || 30));
+  const n = cameras.length;
+  const cols = n === 0 ? 1 : Math.ceil(Math.sqrt(n));
+  const rows = n === 0 ? 1 : Math.ceil(n / cols);
+  els.cameraGrid.style.setProperty("--cam-cols", cols);
+  els.cameraGrid.style.setProperty("--cam-rows", rows);
+  els.cameraGrid.innerHTML = "";
+  state.cameraTiles.clear();
+
+  for (const camera of cameras) {
+    const tile = document.createElement("div");
+    tile.className = "camera-tile";
+    tile.dataset.cameraId = String(camera.camera_id);
+    const img = document.createElement("img");
+    img.alt = camera.label || `Camera ${camera.camera_id}`;
+    img.src = `/api/cameras/${camera.camera_id}/stream?fps=${encodeURIComponent(fps)}`;
+    const label = document.createElement("div");
+    label.className = "camera-tile-label";
+    label.textContent = camera.label || `Camera ${camera.camera_id}`;
+    tile.append(img, label);
+    tile.addEventListener("click", () => {
+      state.activeCameraId = camera.camera_id;
+      els.cameraSelect.value = String(camera.camera_id);
+      updateFocusedTile();
+    });
+    els.cameraGrid.appendChild(tile);
+    state.cameraTiles.set(camera.camera_id, tile);
   }
 }
 
-function setCameraStream() {
-  if (state.activeCameraId === null || state.activeCameraId === undefined) return;
+function updateFocusedTile() {
+  for (const [id, tile] of state.cameraTiles) {
+    tile.classList.toggle("is-focused", id === state.activeCameraId);
+  }
+}
+
+function updateNoFrameVisibility() {
+  const hasCameras = state.cameraIds.length > 0;
+  els.noFrame.style.display = hasCameras ? "none" : "grid";
+  els.cameraGrid.style.display = hasCameras ? "grid" : "none";
+}
+
+function refreshStreamUrls() {
   const fps = Math.max(1, Math.min(60, Number(els.displayFps.value) || 30));
-  const url = `/api/cameras/${state.activeCameraId}/stream?fps=${encodeURIComponent(fps)}`;
-  if (state.streamUrl === url && els.cameraFeed.src.endsWith(url)) return;
-  state.streamUrl = url;
-  els.cameraFeed.onload = () => {
-    els.cameraFeed.style.display = "block";
-    els.noFrame.style.display = "none";
-  };
-  els.cameraFeed.onerror = () => {
-    els.cameraFeed.style.display = "none";
-    els.noFrame.style.display = "grid";
-  };
-  els.cameraFeed.src = url;
+  for (const [id, tile] of state.cameraTiles) {
+    const img = tile.querySelector("img");
+    if (img) img.src = `/api/cameras/${id}/stream?fps=${encodeURIComponent(fps)}`;
+  }
 }
 
 function startPolling() {
@@ -280,13 +327,11 @@ document.addEventListener("keydown", (e) => {
 
 els.cameraSelect.addEventListener("change", () => {
   state.activeCameraId = Number(els.cameraSelect.value);
-  state.streamUrl = null;
-  setCameraStream();
+  updateFocusedTile();
 });
 
 els.displayFps.addEventListener("change", () => {
-  state.streamUrl = null;
-  setCameraStream();
+  refreshStreamUrls();
 });
 
 els.scanCameras.addEventListener("click", async () => {
@@ -305,8 +350,6 @@ els.applyCamera.addEventListener("click", async () => {
     })
   });
   await refreshCameras();
-  state.streamUrl = null;
-  setCameraStream();
 });
 
 /* ============ Robot + sessions ============ */

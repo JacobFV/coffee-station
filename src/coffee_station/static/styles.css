@@ -52,14 +52,48 @@ button { cursor: pointer; }
   z-index: 0;
 }
 
-#cameraFeed {
+.camera-grid {
   position: absolute;
   inset: 0;
+  display: grid;
+  grid-template-columns: repeat(var(--cam-cols, 1), 1fr);
+  grid-template-rows: repeat(var(--cam-rows, 1), 1fr);
+  gap: 2px;
+  background: #000;
+}
+
+.camera-tile {
+  position: relative;
+  overflow: hidden;
+  background: #000;
+  cursor: pointer;
+}
+
+.camera-tile img {
   width: 100%;
   height: 100%;
   object-fit: cover;
-  display: none;
+  display: block;
   filter: saturate(1.05) contrast(1.02);
+}
+
+.camera-tile.is-focused {
+  outline: 3px solid #facc15;
+  outline-offset: -3px;
+  z-index: 1;
+}
+
+.camera-tile .camera-tile-label {
+  position: absolute;
+  left: 8px;
+  top: 8px;
+  padding: 2px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.55);
+  border-radius: 4px;
+  pointer-events: none;
 }
 
 .stage-vignette {
