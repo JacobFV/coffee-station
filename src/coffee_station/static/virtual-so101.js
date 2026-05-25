@@ -185,9 +185,9 @@ function createScene(container) {
   controls.target.set(0.0, 0.0, 0.18);
   controls.enableDamping = true;
   controls.dampingFactor = 0.08;
-  controls.rotateSpeed = 0.7;
-  controls.zoomSpeed = 0.8;
-  controls.panSpeed = 0.45;
+  controls.rotateSpeed = 1.0;
+  controls.zoomSpeed = 1.05;
+  controls.panSpeed = 0.6;
   controls.minDistance = 0.45;
   controls.maxDistance = 4.0;
   controls.update();
