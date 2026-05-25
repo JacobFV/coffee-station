@@ -3,6 +3,7 @@ import { OrbitControls } from "/static/vendor/OrbitControls.js";
 import { STLLoader } from "/static/vendor/STLLoader.js";
 
 const JOINT_NAMES = ["shoulder_pan", "shoulder_lift", "elbow_flex", "wrist_flex", "wrist_roll", "gripper"];
+const INITIAL_ORBIT_X_OFFSET_RAD = THREE.MathUtils.degToRad(-60);
 const views = new Map();
 let robotAsset = null;
 let lastRobotState = null;
@@ -169,11 +170,14 @@ function setRobotPose(robot) {
 function createScene(container) {
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0x030405);
-  scene.fog = new THREE.Fog(0x030405, 1.9, 4.8);
+  scene.fog = new THREE.Fog(0x030405, 4.47, 14.5);
 
   const camera = new THREE.PerspectiveCamera(42, 1, 0.01, 100);
-  camera.position.set(0.9, -1.35, 0.85);
-  camera.lookAt(0.0, 0.0, 0.18);
+  const orbitTarget = new THREE.Vector3(0.0, 0.0, 0.18);
+  const initialOffset = new THREE.Vector3(0.9, -1.35, 0.85).sub(orbitTarget);
+  initialOffset.applyAxisAngle(new THREE.Vector3(1, 0, 0), INITIAL_ORBIT_X_OFFSET_RAD);
+  camera.position.copy(orbitTarget).add(initialOffset);
+  camera.lookAt(orbitTarget);
 
   const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, preserveDrawingBuffer: true });
   renderer.setPixelRatio(window.devicePixelRatio || 1);
@@ -182,7 +186,7 @@ function createScene(container) {
   container.append(renderer.domElement);
 
   const controls = new OrbitControls(camera, renderer.domElement);
-  controls.target.set(0.0, 0.0, 0.18);
+  controls.target.copy(orbitTarget);
   controls.enableDamping = true;
   controls.dampingFactor = 0.08;
   controls.rotateSpeed = 1.0;
