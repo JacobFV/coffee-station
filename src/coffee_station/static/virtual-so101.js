@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { OrbitControls } from "/static/vendor/OrbitControls.js";
 import { STLLoader } from "/static/vendor/STLLoader.js";
 
 const JOINT_NAMES = ["shoulder_pan", "shoulder_lift", "elbow_flex", "wrist_flex", "wrist_roll", "gripper"];
@@ -180,6 +181,17 @@ function createScene(container) {
   renderer.shadowMap.type = THREE.PCFShadowMap;
   container.append(renderer.domElement);
 
+  const controls = new OrbitControls(camera, renderer.domElement);
+  controls.target.set(0.0, 0.0, 0.18);
+  controls.enableDamping = true;
+  controls.dampingFactor = 0.08;
+  controls.rotateSpeed = 0.7;
+  controls.zoomSpeed = 0.8;
+  controls.panSpeed = 0.45;
+  controls.minDistance = 0.45;
+  controls.maxDistance = 4.0;
+  controls.update();
+
   scene.add(new THREE.HemisphereLight(0xeaf2ff, 0x1c2430, 1.8));
   const key = new THREE.DirectionalLight(0xffffff, 1.75);
   key.position.set(1.25, -1.1, 1.7);
@@ -216,7 +228,7 @@ function createScene(container) {
   targetStem.rotation.x = Math.PI / 2;
   scene.add(targetStem);
 
-  return { scene, camera, renderer, target, targetStem };
+  return { scene, camera, controls, renderer, target, targetStem };
 }
 
 function resizeView(view) {
@@ -244,10 +256,10 @@ function updateWorldPoseMarker(view) {
 async function createView(container) {
   if (views.has(container)) return;
   const asset = await loadRobotAsset();
-  const { scene, camera, renderer, target, targetStem } = createScene(container);
+  const { scene, camera, controls, renderer, target, targetStem } = createScene(container);
   const model = buildRobotModel(asset);
   scene.add(model);
-  const view = { container, scene, camera, renderer, model, target, targetStem };
+  const view = { container, scene, camera, controls, renderer, model, target, targetStem };
   views.set(container, view);
   resizeView(view);
   setRobotPose(model);
@@ -257,6 +269,7 @@ async function syncHosts() {
   const hosts = new Set(document.querySelectorAll("[data-virtual-camera='so101']"));
   for (const [host, view] of views) {
     if (hosts.has(host)) continue;
+    view.controls.dispose();
     view.renderer.dispose();
     host.replaceChildren();
     views.delete(host);
@@ -288,7 +301,7 @@ async function animate(now) {
     resizeView(view);
     setRobotPose(view.model);
     updateWorldPoseMarker(view);
-    view.model.rotation.z = Math.PI + Math.sin((now || 0) / 5000) * 0.015;
+    view.controls.update();
     view.renderer.render(view.scene, view.camera);
   }
   requestAnimationFrame(animate);
