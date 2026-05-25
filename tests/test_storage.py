@@ -1,6 +1,6 @@
 import time
 
-from coffee_station.schemas import ChatMessage, ScheduledAction
+from coffee_station.schemas import CameraConfig, ChatMessage, ScheduledAction
 from coffee_station.storage import Storage
 
 
@@ -24,3 +24,19 @@ def test_storage_persists_sessions_messages_and_due_actions(tmp_path):
 
     due = storage.due_actions(time.time())
     assert [item.id for item in due] == [action.id]
+
+
+def test_storage_persists_stream_camera_config(tmp_path):
+    storage = Storage(tmp_path / "sessions.sqlite3")
+    session = storage.create_session(model="gemini-flash-latest", title="Test")
+    config = CameraConfig(
+        camera_id=-1234,
+        label="ESP32-CAM 192.168.4.1",
+        source_url="http://192.168.4.1:81/stream",
+        serial_port="/dev/ttyACM1",
+    )
+
+    storage.upsert_camera_config(session.id, config)
+    restored = storage.list_camera_configs(session.id)
+
+    assert restored == [config]

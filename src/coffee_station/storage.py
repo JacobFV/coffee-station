@@ -69,6 +69,8 @@ class Storage:
                     auto_include integer not null,
                     frequency_hz real not null,
                     label text,
+                    source_url text,
+                    serial_port text,
                     primary key(session_id, camera_id),
                     foreign key(session_id) references sessions(id)
                 );
@@ -124,6 +126,14 @@ class Storage:
                     on calibration_samples(session_id, camera_id, timestamp);
                 """
             )
+            self._ensure_column(conn, "camera_configs", "source_url", "text")
+            self._ensure_column(conn, "camera_configs", "serial_port", "text")
+
+    @staticmethod
+    def _ensure_column(conn: sqlite3.Connection, table: str, column: str, definition: str) -> None:
+        columns = {row["name"] for row in conn.execute(f"pragma table_info({table})").fetchall()}
+        if column not in columns:
+            conn.execute(f"alter table {table} add column {column} {definition}")
 
     def create_session(self, model: str, title: str = "Untitled session") -> SessionRecord:
         session = SessionRecord(title=title, model=model)
@@ -186,13 +196,15 @@ class Storage:
         with self.connect() as conn:
             conn.execute(
                 """
-                insert into camera_configs(session_id, camera_id, enabled, auto_include, frequency_hz, label)
-                values (?, ?, ?, ?, ?, ?)
+                insert into camera_configs(session_id, camera_id, enabled, auto_include, frequency_hz, label, source_url, serial_port)
+                values (?, ?, ?, ?, ?, ?, ?, ?)
                 on conflict(session_id, camera_id) do update set
                     enabled=excluded.enabled,
                     auto_include=excluded.auto_include,
                     frequency_hz=excluded.frequency_hz,
-                    label=excluded.label
+                    label=excluded.label,
+                    source_url=excluded.source_url,
+                    serial_port=excluded.serial_port
                 """,
                 (
                     session_id,
@@ -201,6 +213,8 @@ class Storage:
                     int(config.auto_include),
                     config.frequency_hz,
                     config.label,
+                    config.source_url,
+                    config.serial_port,
                 ),
             )
 
@@ -214,6 +228,8 @@ class Storage:
                 auto_include=bool(row["auto_include"]),
                 frequency_hz=row["frequency_hz"],
                 label=row["label"],
+                source_url=row["source_url"],
+                serial_port=row["serial_port"],
             )
             for row in rows
         ]
