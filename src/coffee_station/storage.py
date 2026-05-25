@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Iterator
 
+from .calibration.models import ArmCalibration, CalibrationSample, CameraExtrinsics
 from .schemas import CalibrationPoint, CameraConfig, ChatMessage, ScheduledAction, SessionRecord
 
 
@@ -85,6 +86,42 @@ class Storage:
                     foreign key(session_id) references sessions(id)
                 );
                 create index if not exists idx_calibration_session on calibration_points(session_id, created_at);
+                create table if not exists arm_calibrations (
+                    robot_id text primary key,
+                    base_height_m real not null,
+                    shoulder_to_elbow_m real not null,
+                    elbow_to_wrist_m real not null,
+                    wrist_to_tool_m real not null,
+                    joint_zero_offsets_deg text not null,
+                    residual_rms_px real,
+                    sample_count integer not null,
+                    status text not null,
+                    updated_at text not null
+                );
+                create table if not exists camera_extrinsics (
+                    camera_id integer primary key,
+                    rotation_vector text not null,
+                    translation_m text not null,
+                    residual_rms_px real,
+                    sample_count integer not null,
+                    updated_at text not null
+                );
+                create table if not exists calibration_samples (
+                    id text primary key,
+                    session_id text not null,
+                    camera_id integer not null,
+                    timestamp real not null,
+                    joint_vector text not null,
+                    pixel_u real not null,
+                    pixel_v real not null,
+                    frame_width integer not null,
+                    frame_height integer not null,
+                    tracker_confidence real not null,
+                    source text not null,
+                    foreign key(session_id) references sessions(id)
+                );
+                create index if not exists idx_self_calibration_samples
+                    on calibration_samples(session_id, camera_id, timestamp);
                 """
             )
 
@@ -303,6 +340,139 @@ class Storage:
             cursor = conn.execute("delete from calibration_points where session_id=?", (session_id,))
             return cursor.rowcount
 
+    def save_arm_calibration(self, calibration: ArmCalibration) -> ArmCalibration:
+        with self.connect() as conn:
+            conn.execute(
+                """
+                insert into arm_calibrations(
+                    robot_id, base_height_m, shoulder_to_elbow_m, elbow_to_wrist_m, wrist_to_tool_m,
+                    joint_zero_offsets_deg, residual_rms_px, sample_count, status, updated_at
+                ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                on conflict(robot_id) do update set
+                    base_height_m=excluded.base_height_m,
+                    shoulder_to_elbow_m=excluded.shoulder_to_elbow_m,
+                    elbow_to_wrist_m=excluded.elbow_to_wrist_m,
+                    wrist_to_tool_m=excluded.wrist_to_tool_m,
+                    joint_zero_offsets_deg=excluded.joint_zero_offsets_deg,
+                    residual_rms_px=excluded.residual_rms_px,
+                    sample_count=excluded.sample_count,
+                    status=excluded.status,
+                    updated_at=excluded.updated_at
+                """,
+                (
+                    calibration.robot_id,
+                    calibration.base_height_m,
+                    calibration.shoulder_to_elbow_m,
+                    calibration.elbow_to_wrist_m,
+                    calibration.wrist_to_tool_m,
+                    json.dumps(calibration.joint_zero_offsets_deg),
+                    calibration.residual_rms_px,
+                    calibration.sample_count,
+                    calibration.status,
+                    calibration.updated_at.isoformat(),
+                ),
+            )
+        return calibration
+
+    def get_arm_calibration(self, robot_id: str) -> ArmCalibration | None:
+        with self.connect() as conn:
+            row = conn.execute("select * from arm_calibrations where robot_id=?", (robot_id,)).fetchone()
+        return None if row is None else self._arm_calibration_from_row(row)
+
+    def save_camera_extrinsics(self, extrinsics: CameraExtrinsics) -> CameraExtrinsics:
+        with self.connect() as conn:
+            conn.execute(
+                """
+                insert into camera_extrinsics(
+                    camera_id, rotation_vector, translation_m, residual_rms_px, sample_count, updated_at
+                ) values (?, ?, ?, ?, ?, ?)
+                on conflict(camera_id) do update set
+                    rotation_vector=excluded.rotation_vector,
+                    translation_m=excluded.translation_m,
+                    residual_rms_px=excluded.residual_rms_px,
+                    sample_count=excluded.sample_count,
+                    updated_at=excluded.updated_at
+                """,
+                (
+                    extrinsics.camera_id,
+                    json.dumps(extrinsics.rotation_vector),
+                    json.dumps(extrinsics.translation_m),
+                    extrinsics.residual_rms_px,
+                    extrinsics.sample_count,
+                    extrinsics.updated_at.isoformat(),
+                ),
+            )
+        return extrinsics
+
+    def get_camera_extrinsics(self, camera_id: int) -> CameraExtrinsics | None:
+        with self.connect() as conn:
+            row = conn.execute("select * from camera_extrinsics where camera_id=?", (camera_id,)).fetchone()
+        return None if row is None else self._camera_extrinsics_from_row(row)
+
+    def add_calibration_sample(self, sample: CalibrationSample, cap: int = 5000) -> CalibrationSample:
+        with self.connect() as conn:
+            conn.execute(
+                """
+                insert into calibration_samples(
+                    id, session_id, camera_id, timestamp, joint_vector, pixel_u, pixel_v,
+                    frame_width, frame_height, tracker_confidence, source
+                ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    sample.id,
+                    sample.session_id,
+                    sample.camera_id,
+                    sample.timestamp,
+                    json.dumps(sample.joint_vector),
+                    sample.pixel_u,
+                    sample.pixel_v,
+                    sample.frame_width,
+                    sample.frame_height,
+                    sample.tracker_confidence,
+                    sample.source,
+                ),
+            )
+            conn.execute(
+                """
+                delete from calibration_samples
+                where id in (
+                    select id from calibration_samples
+                    where session_id=? and camera_id=?
+                    order by timestamp desc
+                    limit -1 offset ?
+                )
+                """,
+                (sample.session_id, sample.camera_id, cap),
+            )
+        return sample
+
+    def list_calibration_samples(
+        self,
+        session_id: str,
+        camera_id: int | None = None,
+        limit: int = 5000,
+    ) -> list[CalibrationSample]:
+        sql = "select * from calibration_samples where session_id=?"
+        args: list[object] = [session_id]
+        if camera_id is not None:
+            sql += " and camera_id=?"
+            args.append(camera_id)
+        sql += " order by timestamp asc limit ?"
+        args.append(limit)
+        with self.connect() as conn:
+            rows = conn.execute(sql, args).fetchall()
+        return [self._calibration_sample_from_row(row) for row in rows]
+
+    def clear_calibration_samples(self, session_id: str, camera_id: int | None = None) -> int:
+        sql = "delete from calibration_samples where session_id=?"
+        args: list[object] = [session_id]
+        if camera_id is not None:
+            sql += " and camera_id=?"
+            args.append(camera_id)
+        with self.connect() as conn:
+            cursor = conn.execute(sql, args)
+            return cursor.rowcount
+
     @staticmethod
     def _session_from_row(row: sqlite3.Row) -> SessionRecord:
         return SessionRecord(
@@ -351,4 +521,46 @@ class Storage:
             actual_z=row["actual_z"],
             note=row["note"],
             created_at=datetime.fromisoformat(row["created_at"]),
+        )
+
+    @staticmethod
+    def _arm_calibration_from_row(row: sqlite3.Row) -> ArmCalibration:
+        return ArmCalibration(
+            robot_id=row["robot_id"],
+            base_height_m=row["base_height_m"],
+            shoulder_to_elbow_m=row["shoulder_to_elbow_m"],
+            elbow_to_wrist_m=row["elbow_to_wrist_m"],
+            wrist_to_tool_m=row["wrist_to_tool_m"],
+            joint_zero_offsets_deg=json.loads(row["joint_zero_offsets_deg"]),
+            residual_rms_px=row["residual_rms_px"],
+            sample_count=row["sample_count"],
+            status=row["status"],
+            updated_at=datetime.fromisoformat(row["updated_at"]),
+        )
+
+    @staticmethod
+    def _camera_extrinsics_from_row(row: sqlite3.Row) -> CameraExtrinsics:
+        return CameraExtrinsics(
+            camera_id=row["camera_id"],
+            rotation_vector=json.loads(row["rotation_vector"]),
+            translation_m=json.loads(row["translation_m"]),
+            residual_rms_px=row["residual_rms_px"],
+            sample_count=row["sample_count"],
+            updated_at=datetime.fromisoformat(row["updated_at"]),
+        )
+
+    @staticmethod
+    def _calibration_sample_from_row(row: sqlite3.Row) -> CalibrationSample:
+        return CalibrationSample(
+            id=row["id"],
+            session_id=row["session_id"],
+            camera_id=row["camera_id"],
+            timestamp=row["timestamp"],
+            joint_vector=json.loads(row["joint_vector"]),
+            pixel_u=row["pixel_u"],
+            pixel_v=row["pixel_v"],
+            frame_width=row["frame_width"],
+            frame_height=row["frame_height"],
+            tracker_confidence=row["tracker_confidence"],
+            source=row["source"],
         )

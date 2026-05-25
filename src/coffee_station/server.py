@@ -8,8 +8,10 @@ from typing import Any
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
+from .calibration.solver import CalibrationSolverError
+from .calibration.service import SelfCalibrationService
 from .agent import AgentHarness
 from .camera import CameraManager
 from .hardware import diagnose_hardware, scan_feetech_motors
@@ -44,7 +46,7 @@ class CameraConfigureRequest(BaseModel):
 class ToolCallRequest(BaseModel):
     session_id: str
     tool_name: str
-    args: dict[str, Any] = {}
+    args: dict[str, Any] = Field(default_factory=dict)
 
 
 class AppState:
@@ -52,9 +54,17 @@ class AppState:
         self.settings = settings
         self.storage = Storage(settings.db_path)
         self.cameras = CameraManager(settings)
-        self.robot = build_robot(settings)
+        self.robot = build_robot(settings, self.storage.get_arm_calibration(settings.lerobot_id if settings.robot_backend == "lerobot" else "sim"))
         self.skills = SkillLibrary()
-        self.tools = ToolRegistry(self.robot, self.cameras, self.storage, self.settings, self.skills)
+        self.self_calibration = SelfCalibrationService(settings, self.storage, self.robot, self.cameras)
+        self.tools = ToolRegistry(
+            self.robot,
+            self.cameras,
+            self.storage,
+            self.settings,
+            self.skills,
+            self.self_calibration,
+        )
         self.agent = AgentHarness(settings, self.storage, self.cameras, self.tools, self.skills)
 
 
@@ -219,6 +229,30 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if skill is None:
             raise HTTPException(status_code=404, detail="skill not found")
         return {"skill": {"name": skill.name, "description": skill.description, "instructions": skill.body.strip()}}
+
+    @app.get("/api/self-calibration")
+    def get_self_calibration(camera_id: int = 0) -> dict[str, Any]:
+        return state.self_calibration.status(camera_id)
+
+    @app.post("/api/self-calibration/start/{session_id}")
+    def start_self_calibration(session_id: str, camera_id: int = 0, duration_s: float = 0.35) -> dict[str, Any]:
+        if not state.storage.get_session(session_id):
+            raise HTTPException(status_code=404, detail="session not found")
+        try:
+            result = state.self_calibration.start_markerless_calibration(session_id, camera_id, duration_s)
+        except CalibrationSolverError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return {"result": result.model_dump()}
+
+    @app.post("/api/self-calibration/fit/{session_id}")
+    def fit_self_calibration(session_id: str, camera_id: int = 0) -> dict[str, Any]:
+        if not state.storage.get_session(session_id):
+            raise HTTPException(status_code=404, detail="session not found")
+        try:
+            result = state.self_calibration.fit_from_session_samples(session_id, camera_id)
+        except CalibrationSolverError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return {"result": result.model_dump()}
 
     @app.get("/api/sessions/{session_id}/actions")
     def list_actions(session_id: str) -> dict[str, Any]:

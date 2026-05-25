@@ -12,6 +12,7 @@ Coffee Station is a native desktop app for driving a Hugging Face LeRobot follow
 - Camera scanning, enable/disable, auto-feed frequency, and latest-frame requests.
 - Live camera display in the desktop window, capped by `CAMERA_FPS`.
 - Local session storage in SQLite.
+- Markerless monocular self-calibration for fitting arm geometry and camera extrinsics from synchronized joint/camera samples.
 - A glass desktop UI with the live camera feed, conversation, queue chips, emergency stop, and a settings drawer that exposes camera, skills, queue, and developer tools.
 
 The current default model is `gemini-flash-latest`. Override it with `GEMINI_MODEL` to pin a stable model.
@@ -93,7 +94,18 @@ The Gemini agent and developer-tools panel expose:
 - `configure_camera_feed` — enables a camera and sets automatic frame inclusion frequency.
 - `discover_cameras`, `list_cameras`, `request_latest_frame`.
 - `list_scheduled_actions`, `cancel_scheduled_action`, `cancel_queued_actions`.
+- `start_self_calibration`, `fit_self_calibration`, `get_self_calibration`, `record_self_calibration_sample`.
 - `get_robot_state`, `stop_robot`, `pause_session`, `resume_session`.
+
+## Self-calibration
+
+Self-calibration is feature-gated by default:
+
+```bash
+export SELF_CALIBRATION_ENABLED=true
+```
+
+The implementation persists fitted arm geometry, camera extrinsics, and calibration samples in SQLite. `start_self_calibration` commands a conservative excitation trajectory, tracks coherent webcam motion, records screen-space samples, and fits `ArmGeometry` plus camera extrinsics with bounded least-squares. `fit_self_calibration` can also fit from pre-recorded samples. On startup, persisted fitted geometry is loaded into IK for that robot id. Once fitted, agent-loop camera frames are used for FK-guided online refinement when a recent joint command is available.
 
 ## Safety
 

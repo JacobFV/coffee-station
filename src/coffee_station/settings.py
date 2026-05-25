@@ -32,6 +32,9 @@ class Settings(BaseSettings):
 
     data_dir: Path = Field(default=Path.home() / ".coffee-station", alias="COFFEE_STATION_DATA_DIR")
 
+    self_calibration_enabled: bool = Field(default=False, alias="SELF_CALIBRATION_ENABLED")
+    self_calibration_min_samples: int = Field(default=8, alias="SELF_CALIBRATION_MIN_SAMPLES")
+
     @property
     def db_path(self) -> Path:
         return self.data_dir / "sessions.sqlite3"

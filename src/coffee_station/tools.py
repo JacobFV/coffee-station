@@ -5,6 +5,7 @@ from typing import Any, Callable
 
 from google.genai import types
 
+from .calibration.service import SelfCalibrationService
 from .camera import CameraManager
 from .hardware import diagnose_hardware, scan_feetech_motors
 from .robot import RobotController
@@ -17,12 +18,14 @@ from .storage import Storage
 class ToolRegistry:
     def __init__(self, robot: RobotController, cameras: CameraManager, storage: Storage,
                  settings: Settings | None = None,
-                 skills: SkillLibrary | None = None) -> None:
+                 skills: SkillLibrary | None = None,
+                 calibration: SelfCalibrationService | None = None) -> None:
         self.robot = robot
         self.cameras = cameras
         self.storage = storage
         self.settings = settings or Settings()
         self.skills = skills or SkillLibrary()
+        self.calibration = calibration
         self._tools: dict[str, Callable[..., dict[str, Any]]] = {
             "set_joint_pose": self.set_joint_pose,
             "set_world_pose": self.set_world_pose,
@@ -44,6 +47,10 @@ class ToolRegistry:
             "record_calibration_point": self.record_calibration_point,
             "get_calibration": self.get_calibration,
             "clear_calibration": self.clear_calibration,
+            "start_self_calibration": self.start_self_calibration,
+            "fit_self_calibration": self.fit_self_calibration,
+            "get_self_calibration": self.get_self_calibration,
+            "record_self_calibration_sample": self.record_self_calibration_sample,
             "pause_session": self.pause_session,
             "resume_session": self.resume_session,
         }
@@ -242,6 +249,44 @@ class ToolRegistry:
                 parameters={"type": "object", "properties": {}},
             ),
             types.FunctionDeclaration(
+                name="start_self_calibration",
+                description="Run markerless monocular self-calibration using the camera and a safe excitation trajectory. Requires SELF_CALIBRATION_ENABLED.",
+                parameters={
+                    "type": "object",
+                    "properties": {
+                        "camera_id": {"type": "integer"},
+                        "duration_s": {"type": "number"},
+                    },
+                },
+            ),
+            types.FunctionDeclaration(
+                name="fit_self_calibration",
+                description="Fit arm geometry and camera extrinsics from already recorded monocular calibration samples.",
+                parameters={"type": "object", "properties": {"camera_id": {"type": "integer"}}},
+            ),
+            types.FunctionDeclaration(
+                name="get_self_calibration",
+                description="Return fitted arm geometry, camera extrinsics, confidence, and feature-gate status.",
+                parameters={"type": "object", "properties": {"camera_id": {"type": "integer"}}},
+            ),
+            types.FunctionDeclaration(
+                name="record_self_calibration_sample",
+                description="Record one synchronized joint-vector to screen-space gripper observation for solver-driven self-calibration.",
+                parameters={
+                    "type": "object",
+                    "properties": {
+                        "camera_id": {"type": "integer"},
+                        "joint_vector": {"type": "array", "items": {"type": "number"}},
+                        "pixel_u": {"type": "number"},
+                        "pixel_v": {"type": "number"},
+                        "frame_width": {"type": "integer"},
+                        "frame_height": {"type": "integer"},
+                        "tracker_confidence": {"type": "number"},
+                    },
+                    "required": ["camera_id", "joint_vector", "pixel_u", "pixel_v", "frame_width", "frame_height"],
+                },
+            ),
+            types.FunctionDeclaration(
                 name="pause_session",
                 description="Pause autonomous agent steps for this session. Already scheduled robot actions may continue if due.",
                 parameters={"type": "object", "properties": {}},
@@ -275,6 +320,10 @@ class ToolRegistry:
             "record_calibration_point",
             "get_calibration",
             "clear_calibration",
+            "start_self_calibration",
+            "fit_self_calibration",
+            "get_self_calibration",
+            "record_self_calibration_sample",
             "pause_session",
             "resume_session",
         }
@@ -430,6 +479,51 @@ class ToolRegistry:
 
     def clear_calibration(self, session_id: str) -> dict[str, Any]:
         return {"cleared": self.storage.clear_calibration_points(session_id)}
+
+    def _require_self_calibration(self) -> SelfCalibrationService:
+        if self.calibration is None:
+            raise RuntimeError("self-calibration service is not configured")
+        return self.calibration
+
+    def start_self_calibration(
+        self,
+        session_id: str,
+        camera_id: int = 0,
+        duration_s: float = 0.35,
+    ) -> dict[str, Any]:
+        result = self._require_self_calibration().start_markerless_calibration(session_id, camera_id, duration_s)
+        return {"result": result.model_dump()}
+
+    def fit_self_calibration(self, session_id: str, camera_id: int = 0) -> dict[str, Any]:
+        result = self._require_self_calibration().fit_from_session_samples(session_id, camera_id)
+        return {"result": result.model_dump()}
+
+    def get_self_calibration(self, session_id: str, camera_id: int = 0) -> dict[str, Any]:
+        del session_id
+        return self._require_self_calibration().status(camera_id)
+
+    def record_self_calibration_sample(
+        self,
+        session_id: str,
+        camera_id: int,
+        joint_vector: list[float],
+        pixel_u: float,
+        pixel_v: float,
+        frame_width: int,
+        frame_height: int,
+        tracker_confidence: float = 1.0,
+    ) -> dict[str, Any]:
+        sample = self._require_self_calibration().record_sample(
+            session_id=session_id,
+            camera_id=camera_id,
+            joint_vector=joint_vector,
+            pixel_u=pixel_u,
+            pixel_v=pixel_v,
+            frame_width=frame_width,
+            frame_height=frame_height,
+            tracker_confidence=tracker_confidence,
+        )
+        return {"sample": sample.model_dump()}
 
     def _calibration_summary(self, session_id: str) -> dict[str, Any]:
         points = self.storage.list_calibration_points(session_id)

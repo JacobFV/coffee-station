@@ -193,6 +193,11 @@ class AgentHarness:
 
         frame_parts: list[types.Part] = []
         for frame in self.cameras.frames_for_agent_step():
+            if self.tools.calibration is not None:
+                try:
+                    self.tools.calibration.observe_agent_frame(session_id, frame)
+                except Exception:
+                    LOGGER.exception("self-calibration online observation failed")
             frame_parts.append(types.Part(text=f"Camera {frame.camera_id} frame at {frame.timestamp:.3f}"))
             frame_parts.append(types.Part.from_bytes(data=frame.jpeg, mime_type="image/jpeg"))
         status = self.tools.get_robot_state(session_id)

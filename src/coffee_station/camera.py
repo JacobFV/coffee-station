@@ -223,6 +223,12 @@ class CameraManager:
         frame = device.read() if refresh else device.latest
         return None if frame is None else frame.jpeg
 
+    def raw_frame(self, camera_id: int, refresh: bool = True) -> CapturedFrame | None:
+        device = self.devices.get(camera_id)
+        if device is None:
+            return None
+        return device.read() if refresh else device.latest
+
     def stream_frames(self, camera_id: int, max_fps: float | None = None):
         device = self.devices.get(camera_id)
         if device is None:

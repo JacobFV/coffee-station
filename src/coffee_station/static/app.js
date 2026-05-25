@@ -164,7 +164,7 @@ function renderQueue(actions) {
 
   // Bottom chips: just show active queue summary
   els.queueChips.innerHTML = "";
-  const active = actions.filter((a) => a.status === "scheduled" || a.status === "running");
+  const active = actions.filter((a) => a.status === "queued" || a.status === "running");
   for (const action of active.slice(0, 4)) {
     const chip = document.createElement("div");
     chip.className = "chip";
@@ -399,6 +399,18 @@ els.toolSelect.addEventListener("change", () => {
     },
     get_calibration: {},
     clear_calibration: {},
+    get_self_calibration: { camera_id: state.activeCameraId || 0 },
+    start_self_calibration: { camera_id: state.activeCameraId || 0, duration_s: 0.35 },
+    fit_self_calibration: { camera_id: state.activeCameraId || 0 },
+    record_self_calibration_sample: {
+      camera_id: state.activeCameraId || 0,
+      joint_vector: [0, -25, 35, -10, 0, 25],
+      pixel_u: 640,
+      pixel_v: 360,
+      frame_width: 1280,
+      frame_height: 720,
+      tracker_confidence: 1
+    },
     bundle_tool_calls: {
       calls: [
         { tool_name: "offset_world_pose", args: { dz: 0.02, duration_s: 0.25 }, offset_s: 0 },

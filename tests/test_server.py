@@ -30,6 +30,11 @@ def test_session_api_lifecycle(tmp_path):
         skills = client.get("/api/skills").json()
         assert any(skill["name"] == "pose-table-6dof" for skill in skills["skills"])
 
+        self_calibration = client.get("/api/self-calibration").json()
+        assert self_calibration["enabled"] is False
+        gated = client.post(f"/api/self-calibration/start/{session_id}").json()
+        assert "SELF_CALIBRATION_ENABLED" in gated["detail"]
+
         hardware = client.get("/api/hardware/diagnostics").json()
         assert "serial_ports" in hardware
         scan = client.get("/api/hardware/feetech-scan", params={"port": "/dev/does-not-exist"}).json()

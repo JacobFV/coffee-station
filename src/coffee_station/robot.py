@@ -4,10 +4,12 @@ import json
 import logging
 import inspect
 import time
+from collections import deque
 from abc import ABC, abstractmethod
 from typing import Any
 
 from .ik import SimpleArmIK
+from .calibration.models import ArmCalibration
 from .schemas import JointPose, WorldPose
 from .settings import Settings
 
@@ -280,6 +282,8 @@ class RobotController:
         self.backend = backend
         self.ik = ik or SimpleArmIK()
         self.current_world_pose = WorldPose(x=0.18, y=0.0, z=0.14, pitch=-25.0)
+        self.arm_calibration: ArmCalibration | None = None
+        self._joint_history: deque[tuple[float, list[float]]] = deque(maxlen=100)
 
     def connect(self) -> None:
         self.backend.connect()
@@ -288,7 +292,9 @@ class RobotController:
         self.backend.disconnect()
 
     def set_joint_pose(self, joints: list[float], duration_s: float = 0.5) -> dict[str, Any]:
-        return self.backend.set_joint_pose(JointPose(joints=joints), duration_s=duration_s)
+        result = self.backend.set_joint_pose(JointPose(joints=joints), duration_s=duration_s)
+        self._joint_history.append((time.time(), list(joints)))
+        return result
 
     def stop(self) -> dict[str, Any]:
         return self.backend.stop()
@@ -296,6 +302,7 @@ class RobotController:
     def set_world_pose(self, pose: WorldPose, duration_s: float = 0.5) -> dict[str, Any]:
         joint_pose = self.ik.solve(pose)
         result = self.backend.set_joint_pose(joint_pose, duration_s=duration_s)
+        self._joint_history.append((time.time(), list(joint_pose.joints)))
         self.current_world_pose = pose
         result["ik_joint_pose"] = joint_pose.model_dump()
         result["world_pose"] = pose.model_dump()
@@ -309,10 +316,51 @@ class RobotController:
     def state(self) -> dict[str, Any]:
         data = self.backend.get_state()
         data["current_world_pose"] = self.current_world_pose.model_dump()
+        data["ik_geometry"] = {
+            "base_height_m": self.ik.geometry.base_height_m,
+            "shoulder_to_elbow_m": self.ik.geometry.shoulder_to_elbow_m,
+            "elbow_to_wrist_m": self.ik.geometry.elbow_to_wrist_m,
+            "wrist_to_tool_m": self.ik.geometry.wrist_to_tool_m,
+        }
+        data["arm_calibration"] = None if self.arm_calibration is None else self.arm_calibration.model_dump()
+        data["calibration_confidence"] = self._calibration_confidence()
+        recent = self.recent_joint_pose(max_age_s=60.0)
+        data["recent_joint_pose"] = None if recent is None else {"timestamp": recent[0], "joints": recent[1]}
         return data
 
+    def apply_calibration(self, calibration: ArmCalibration) -> None:
+        self.ik = SimpleArmIK(calibration.geometry())
+        self.arm_calibration = calibration
 
-def build_robot(settings: Settings) -> RobotController:
+    def recent_joint_pose(self, max_age_s: float = 2.0) -> tuple[float, list[float]] | None:
+        if not self._joint_history:
+            return None
+        timestamp, joints = self._joint_history[-1]
+        if time.time() - timestamp > max_age_s:
+            return None
+        return timestamp, list(joints)
+
+    def _calibration_confidence(self) -> dict[str, Any]:
+        if self.arm_calibration is None:
+            return {"status": "unfit", "sample_count": 0, "residual_rms_px": None}
+        residual = self.arm_calibration.residual_rms_px
+        if residual is None:
+            status = "unknown"
+        elif residual <= 3.0:
+            status = "high"
+        elif residual <= 8.0:
+            status = "medium"
+        else:
+            status = "low"
+        return {
+            "status": status,
+            "sample_count": self.arm_calibration.sample_count,
+            "residual_rms_px": residual,
+            "updated_at": self.arm_calibration.updated_at.isoformat(),
+        }
+
+
+def build_robot(settings: Settings, calibration: ArmCalibration | None = None) -> RobotController:
     backend: RobotBackend
     limits = LeRobotFollower._load_limits(settings.robot_joint_limits_json)
     if settings.robot_backend == "lerobot":
@@ -329,4 +377,6 @@ def build_robot(settings: Settings) -> RobotController:
             controller.connect()
         else:
             raise
+    if calibration is not None and calibration.status == "fit":
+        controller.apply_calibration(calibration)
     return controller
