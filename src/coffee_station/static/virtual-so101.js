@@ -1,5 +1,4 @@
 import * as THREE from "three";
-import { OrbitControls } from "/static/vendor/OrbitControls.js";
 import { STLLoader } from "/static/vendor/STLLoader.js";
 
 const JOINT_NAMES = ["shoulder_pan", "shoulder_lift", "elbow_flex", "wrist_flex", "wrist_roll", "gripper"];
@@ -8,6 +7,7 @@ const views = new Map();
 let robotAsset = null;
 let lastRobotState = null;
 let lastStatePoll = 0;
+const X_AXIS = new THREE.Vector3(1, 0, 0);
 
 function parseVector(raw) {
   const values = String(raw ?? "0 0 0").trim().split(/\s+/).map(Number);
@@ -167,34 +167,77 @@ function setRobotPose(robot) {
   }
 }
 
+function makeInitialOrbit() {
+  const target = new THREE.Vector3(0.0, 0.0, 0.18);
+  const offset = new THREE.Vector3(0.9, -1.35, 0.85).sub(target);
+  offset.applyAxisAngle(X_AXIS, INITIAL_ORBIT_X_OFFSET_RAD);
+  const radius = offset.length();
+  const orientation = new THREE.Quaternion();
+  new THREE.Matrix4().lookAt(offset, new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 1, 0)).invert().decompose(
+    new THREE.Vector3(),
+    orientation,
+    new THREE.Vector3()
+  );
+  return {
+    target,
+    radius,
+    orientation,
+    dragging: false,
+    lastX: 0,
+    lastY: 0
+  };
+}
+
+function updateOrbitCamera(camera, orbit) {
+  const offset = new THREE.Vector3(0, 0, orbit.radius).applyQuaternion(orbit.orientation);
+  camera.position.copy(orbit.target).add(offset);
+  camera.quaternion.copy(orbit.orientation);
+}
+
+function installOrbitControls(element, state, update) {
+  element.addEventListener("pointerdown", (event) => {
+    state.dragging = true;
+    state.lastX = event.clientX;
+    state.lastY = event.clientY;
+    element.setPointerCapture(event.pointerId);
+  });
+  element.addEventListener("pointermove", (event) => {
+    if (!state.dragging) return;
+    const dx = event.clientX - state.lastX;
+    const dy = event.clientY - state.lastY;
+    state.lastX = event.clientX;
+    state.lastY = event.clientY;
+    const screenUp = new THREE.Vector3(0, 1, 0).applyQuaternion(state.orientation);
+    const screenRight = new THREE.Vector3(1, 0, 0).applyQuaternion(state.orientation);
+    const yaw = new THREE.Quaternion().setFromAxisAngle(screenUp, -dx * 0.008);
+    const pitch = new THREE.Quaternion().setFromAxisAngle(screenRight, -dy * 0.008);
+    state.orientation.premultiply(yaw).premultiply(pitch).normalize();
+    update();
+  });
+  element.addEventListener("pointerup", (event) => {
+    state.dragging = false;
+    element.releasePointerCapture(event.pointerId);
+  });
+  element.addEventListener("pointercancel", () => {
+    state.dragging = false;
+  });
+}
+
 function createScene(container) {
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0x030405);
   scene.fog = new THREE.Fog(0x030405, 4.47, 14.5);
 
   const camera = new THREE.PerspectiveCamera(42, 1, 0.01, 100);
-  const orbitTarget = new THREE.Vector3(0.0, 0.0, 0.18);
-  const initialOffset = new THREE.Vector3(0.9, -1.35, 0.85).sub(orbitTarget);
-  initialOffset.applyAxisAngle(new THREE.Vector3(1, 0, 0), INITIAL_ORBIT_X_OFFSET_RAD);
-  camera.position.copy(orbitTarget).add(initialOffset);
-  camera.lookAt(orbitTarget);
+  const orbit = makeInitialOrbit();
+  updateOrbitCamera(camera, orbit);
 
   const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, preserveDrawingBuffer: true });
   renderer.setPixelRatio(window.devicePixelRatio || 1);
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFShadowMap;
   container.append(renderer.domElement);
-
-  const controls = new OrbitControls(camera, renderer.domElement);
-  controls.target.copy(orbitTarget);
-  controls.enableDamping = true;
-  controls.dampingFactor = 0.08;
-  controls.rotateSpeed = 1.0;
-  controls.zoomSpeed = 1.05;
-  controls.panSpeed = 0.6;
-  controls.minDistance = 0.45;
-  controls.maxDistance = 4.0;
-  controls.update();
+  installOrbitControls(renderer.domElement, orbit, () => updateOrbitCamera(camera, orbit));
 
   scene.add(new THREE.HemisphereLight(0xeaf2ff, 0x1c2430, 1.8));
   const key = new THREE.DirectionalLight(0xffffff, 1.75);
@@ -232,7 +275,7 @@ function createScene(container) {
   targetStem.rotation.x = Math.PI / 2;
   scene.add(targetStem);
 
-  return { scene, camera, controls, renderer, target, targetStem };
+  return { scene, camera, orbit, renderer, target, targetStem };
 }
 
 function resizeView(view) {
@@ -260,10 +303,10 @@ function updateWorldPoseMarker(view) {
 async function createView(container) {
   if (views.has(container)) return;
   const asset = await loadRobotAsset();
-  const { scene, camera, controls, renderer, target, targetStem } = createScene(container);
+  const { scene, camera, orbit, renderer, target, targetStem } = createScene(container);
   const model = buildRobotModel(asset);
   scene.add(model);
-  const view = { container, scene, camera, controls, renderer, model, target, targetStem };
+  const view = { container, scene, camera, orbit, renderer, model, target, targetStem };
   views.set(container, view);
   resizeView(view);
   setRobotPose(model);
@@ -273,7 +316,6 @@ async function syncHosts() {
   const hosts = new Set(document.querySelectorAll("[data-virtual-camera='so101']"));
   for (const [host, view] of views) {
     if (hosts.has(host)) continue;
-    view.controls.dispose();
     view.renderer.dispose();
     host.replaceChildren();
     views.delete(host);
@@ -305,7 +347,7 @@ async function animate(now) {
     resizeView(view);
     setRobotPose(view.model);
     updateWorldPoseMarker(view);
-    view.controls.update();
+    updateOrbitCamera(view.camera, view.orbit);
     view.renderer.render(view.scene, view.camera);
   }
   requestAnimationFrame(animate);
