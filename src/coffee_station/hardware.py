@@ -71,7 +71,7 @@ def diagnose_hardware(settings: Settings) -> dict[str, Any]:
         "ready_for_lerobot": configured_port_visible,
         "ready_for_lerobot_note": "This checks serial-port visibility only; run feetech motor scan to verify servo handshake.",
         "guidance": (
-            "Set ROBOT_BACKEND=lerobot and LEROBOT_PORT to a visible /dev/cu.usb* device."
+            "Set LEROBOT_PORT to a visible /dev/cu.usb* device."
             if not usb_serial_ports
             else "Use one visible usb serial port as LEROBOT_PORT, then restart."
         ),

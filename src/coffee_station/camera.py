@@ -52,7 +52,10 @@ class CameraDevice:
         cap.set(cv2.CAP_PROP_FPS, self.settings.camera_fps)
         if not cap.isOpened():
             self.open_error = f"camera {self.config.camera_id} could not be opened"
+            self.config.enabled = False
             cap.release()
+            with self.lock:
+                self.frame_ready.notify_all()
             return
         self.capture = cap
         self.open_error = None
@@ -108,10 +111,16 @@ class CameraDevice:
             ok, frame = self.capture.read()
         if not ok:
             self.open_error = f"camera {self.config.camera_id} read failed"
+            self.config.enabled = False
+            with self.lock:
+                self.frame_ready.notify_all()
             return self.latest
         ok, encoded = cv2.imencode(".jpg", frame, [int(cv2.IMWRITE_JPEG_QUALITY), 85])
         if not ok:
             self.open_error = f"camera {self.config.camera_id} jpeg encode failed"
+            self.config.enabled = False
+            with self.lock:
+                self.frame_ready.notify_all()
             return self.latest
         height, width = frame.shape[:2]
         captured = CapturedFrame(
@@ -208,6 +217,7 @@ class CameraManager:
                 if not enabled:
                     device.close()
                 else:
+                    device.open_error = None
                     device.start_capture_loop()
             if auto_include is not None:
                 device.config.auto_include = auto_include

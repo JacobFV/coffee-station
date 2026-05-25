@@ -15,7 +15,7 @@ class Settings(BaseSettings):
     agent_step_interval_s: float = Field(default=1.0, alias="AGENT_STEP_INTERVAL_S")
     agent_max_tool_rounds: int = Field(default=2, alias="AGENT_MAX_TOOL_ROUNDS")
 
-    robot_backend: Literal["sim", "lerobot"] = Field(default="sim", alias="ROBOT_BACKEND")
+    robot_backend: Literal["sim", "lerobot"] = Field(default="lerobot", alias="ROBOT_BACKEND")
     lerobot_port: str | None = Field(default=None, alias="LEROBOT_PORT")
     lerobot_id: str = Field(default="coffee_station_arm", alias="LEROBOT_ID")
     lerobot_type: str = Field(default="so100_follower", alias="LEROBOT_TYPE")

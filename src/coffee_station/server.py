@@ -1,5 +1,12 @@
 from __future__ import annotations
 
+"""Internal renderer API for the Coffee Station desktop shell.
+
+Do not run this module directly with uvicorn for normal operation. The supported
+entrypoint is `coffee-station`, which starts this FastAPI app as a loopback-only
+renderer bridge inside the native pywebview desktop window.
+"""
+
 import asyncio
 from contextlib import asynccontextmanager
 from importlib import resources

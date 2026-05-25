@@ -5,13 +5,13 @@ import threading
 import time
 from dataclasses import dataclass
 
-import uvicorn
+import uvicorn  # Internal pywebview renderer bridge; not a user-facing server.
 
 from .settings import Settings
 
 # Loopback-only renderer bridge. The embedded HTTP layer exists solely to feed
-# the native pywebview window — it is never bound to a public interface and
-# never exposed to the user. Treat it as in-process IPC, not a web server.
+# the native pywebview window; the supported entrypoint is `coffee-station`.
+# Treat this as desktop-internal IPC, not a browser/server workflow.
 _RENDERER_HOST = "127.0.0.1"
 
 
@@ -85,7 +85,7 @@ def run_desktop(settings: Settings) -> None:
         import webview
     except Exception as exc:
         raise RuntimeError(
-            "Coffee Station requires pywebview. Install with: pip install -e ."
+            "Coffee Station requires pywebview. Install with: make install"
         ) from exc
 
     bridge = renderer_bridge_config(settings)
@@ -100,6 +100,6 @@ def run_desktop(settings: Settings) -> None:
             min_size=(960, 640),
             confirm_close=True,
         )
-        webview.start()
+        webview.start(gui="qt")
     finally:
         backend.stop()

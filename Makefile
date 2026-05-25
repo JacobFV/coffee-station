@@ -1,28 +1,25 @@
 PY ?= python3
 VENV ?= .venv
 BIN := $(VENV)/bin
+PIP_INSTALL ?= $(BIN)/pip install --retries 5 --timeout 120
 
-.PHONY: help venv install install-lerobot dev test run clean
+.PHONY: help venv install dev test run clean
 
 help:
 	@echo "Targets:"
-	@echo "  install         Create venv and install package with dev extras"
-	@echo "  install-lerobot Install lerobot extra into the venv"
+	@echo "  install         Create venv and install package with dev tools and LeRobot"
 	@echo "  test            Run pytest"
 	@echo "  run             Run coffee-station"
 	@echo "  clean           Remove venv and caches"
 
 $(BIN)/python:
 	$(PY) -m venv $(VENV)
-	$(BIN)/pip install --upgrade pip
+	$(PIP_INSTALL) --upgrade pip
 
 venv: $(BIN)/python
 
 install: venv
-	$(BIN)/pip install -e ".[dev]"
-
-install-lerobot: venv
-	$(BIN)/pip install -e ".[lerobot]"
+	$(PIP_INSTALL) -e ".[dev]"
 
 dev: install
 

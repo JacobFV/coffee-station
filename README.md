@@ -25,12 +25,6 @@ source .venv/bin/activate
 pip install -e ".[dev]"
 ```
 
-For physical LeRobot hardware:
-
-```bash
-pip install -e ".[lerobot]"
-```
-
 ## Run
 
 Set your Gemini API key, then launch the app:
@@ -41,6 +35,8 @@ coffee-station
 ```
 
 That's the only command. A native window opens with the camera feed and conversation. The window is the app — there is no separate process to start, no URL to visit, no port to remember.
+
+Do not launch `coffee_station.server:create_app` with `uvicorn` for normal use or demos. The FastAPI app is an internal renderer bridge used by `coffee-station` inside the native pywebview window; running it directly leaves you with an unsupported browser/server workflow.
 
 ## Hardware configuration
 
@@ -72,7 +68,7 @@ Optional safety limits are JSON `[min, max]` degree pairs matching the joint com
 export ROBOT_JOINT_LIMITS_JSON='[[-90,90],[-90,45],[-120,120],[-120,120],[-180,180],[0,100]]'
 ```
 
-If the robot cannot connect, the app refuses movement commands for the LeRobot backend. Use `ROBOT_BACKEND=sim` for development without hardware.
+If the robot cannot connect, the app refuses movement commands until LeRobot hardware is configured and reachable.
 
 ## Diagnostics
 

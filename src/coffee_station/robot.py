@@ -155,7 +155,7 @@ class LeRobotFollower(RobotBackend):
                 from lerobot.robots.so_follower import SO100Follower as SOFollower
                 from lerobot.robots.so_follower import SO100FollowerConfig as SOFollowerConfig
             except Exception as exc:
-                raise RobotError("LeRobot is not installed with SO follower support; install .[lerobot]") from exc
+                raise RobotError("LeRobot is not installed with SO follower support; run `make install`.") from exc
 
         config_kwargs: dict[str, Any] = {"port": self.settings.lerobot_port}
         if "id" in inspect.signature(SOFollowerConfig).parameters:
@@ -380,7 +380,7 @@ def build_robot(settings: Settings, calibration: ArmCalibration | None = None) -
         controller.connect()
     except Exception as exc:
         if settings.robot_backend == "lerobot" and not settings.robot_strict_connect:
-            LOGGER.exception("LeRobot backend is unavailable; exposing disconnected backend state.")
+            LOGGER.warning("LeRobot backend is unavailable; exposing disconnected backend state: %s", exc)
             controller = RobotController(UnavailableRobot(settings.robot_backend, str(exc)))
             controller.connect()
         else:

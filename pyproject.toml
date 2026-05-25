@@ -7,20 +7,20 @@ requires-python = ">=3.11"
 dependencies = [
     "fastapi>=0.115.0",
     "google-genai>=1.15.0",
+    "lerobot[feetech]>=0.4.1",
     "numpy>=1.26.0",
     "opencv-python>=4.9.0",
     "pydantic>=2.7.0",
     "pydantic-settings>=2.2.0",
     "pyserial>=3.5",
-    "pywebview>=5.3",
+    "pywebview[pyside6]>=5.3",
     "scipy>=1.12.0",
+    # Internal loopback renderer bridge for the pywebview desktop shell.
+    # Do not run coffee_station.server directly with uvicorn as a user workflow.
     "uvicorn[standard]>=0.29.0",
 ]
 
 [project.optional-dependencies]
-lerobot = [
-    "lerobot[feetech]>=0.4.1",
-]
 dev = [
     "pytest>=8.2.0",
     "httpx>=0.27.0",

@@ -98,7 +98,7 @@ async function loadRobotAsset() {
 function buildRobotModel(asset) {
   const root = new THREE.Group();
   root.scale.setScalar(3.2);
-  root.rotation.x = -Math.PI / 2;
+  root.rotation.x = 0;
   root.rotation.z = Math.PI;
   const linkGroups = {};
   const jointMotion = {};
@@ -177,7 +177,7 @@ function createScene(container) {
   const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, preserveDrawingBuffer: true });
   renderer.setPixelRatio(window.devicePixelRatio || 1);
   renderer.shadowMap.enabled = true;
-  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.shadowMap.type = THREE.PCFShadowMap;
   container.append(renderer.domElement);
 
   scene.add(new THREE.HemisphereLight(0xeaf2ff, 0x1c2430, 1.8));

@@ -123,7 +123,7 @@ def test_markerless_tracker_prefers_expected_motion_region():
 
 
 def test_online_observation_records_and_refits(tmp_path):
-    settings = Settings(data_dir=tmp_path, camera_indices="", self_calibration_enabled=True)
+    settings = Settings(data_dir=tmp_path, camera_indices="", robot_backend="sim", self_calibration_enabled=True)
     storage = Storage(tmp_path / "sessions.sqlite3")
     session = storage.create_session(model="gemini-flash-latest")
     robot = RobotController(SimRobot())
