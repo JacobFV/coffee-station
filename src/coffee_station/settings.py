@@ -29,9 +29,6 @@ class Settings(BaseSettings):
     camera_width: int = Field(default=1280, alias="CAMERA_WIDTH")
     camera_height: int = Field(default=720, alias="CAMERA_HEIGHT")
     camera_fps: int = Field(default=30, alias="CAMERA_FPS")
-    esp32_camera_hosts: str = Field(default="", alias="ESP32_CAMERA_HOSTS")
-    esp32_camera_serial_probe: bool = Field(default=True, alias="ESP32_CAMERA_SERIAL_PROBE")
-    esp32_camera_probe_timeout_s: float = Field(default=2.0, alias="ESP32_CAMERA_PROBE_TIMEOUT_S")
 
     data_dir: Path = Field(default=Path.home() / ".coffee-station", alias="COFFEE_STATION_DATA_DIR")
 
@@ -50,6 +47,3 @@ class Settings(BaseSettings):
                 continue
             indices.append(int(part))
         return indices or [0]
-
-    def parsed_esp32_camera_hosts(self) -> list[str]:
-        return [part.strip() for part in self.esp32_camera_hosts.split(",") if part.strip()]

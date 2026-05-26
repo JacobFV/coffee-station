@@ -1,20 +1,12 @@
 from __future__ import annotations
 
 import base64
-import re
-import socket
-import subprocess
 import threading
 import time
-import urllib.error
-import urllib.parse
-import urllib.request
-import zlib
 from dataclasses import dataclass
 from typing import Any
 
 import cv2
-import numpy as np
 
 from .schemas import CameraConfig, FrameInfo
 from .settings import Settings
@@ -54,12 +46,10 @@ class CameraDevice:
     def open(self) -> None:
         if self.capture is not None:
             return
-        source: int | str = self.config.source_url or self.config.camera_id
-        cap = cv2.VideoCapture(source)
-        if self.config.source_url is None:
-            cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.settings.camera_width)
-            cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.settings.camera_height)
-            cap.set(cv2.CAP_PROP_FPS, self.settings.camera_fps)
+        cap = cv2.VideoCapture(self.config.camera_id)
+        cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.settings.camera_width)
+        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.settings.camera_height)
+        cap.set(cv2.CAP_PROP_FPS, self.settings.camera_fps)
         if not cap.isOpened():
             self.open_error = f"camera {self.config.camera_id} could not be opened"
             self.config.enabled = False
@@ -158,8 +148,6 @@ class CameraDevice:
 
 class CameraManager:
     VIRTUAL_SO101_CAMERA_ID = -101
-    ESP32_CAMERA_ID_BASE = -1000
-    ESP32_CAMERA_ID_SPAN = 900_000
 
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
@@ -215,82 +203,7 @@ class CameraManager:
                     "height": height,
                 }
             )
-        discovered.extend(self.discover_esp32_cameras())
         return discovered
-
-    def discover_esp32_cameras(self) -> list[dict[str, Any]]:
-        discovered: list[dict[str, Any]] = []
-        serial_ports = _esp32_serial_ports()
-        hosts = _unique([
-            *self.settings.parsed_esp32_camera_hosts(),
-            "192.168.4.1",
-            *_hosts_from_mdns(),
-            *_hosts_from_neighbor_table(),
-        ])
-        serial_logs: dict[str, str] = {}
-        if self.settings.esp32_camera_serial_probe:
-            for port in serial_ports:
-                log = _read_serial_excerpt(port["device"], timeout_s=self.settings.esp32_camera_probe_timeout_s)
-                serial_logs[port["device"]] = log
-                hosts.extend(_hosts_from_text(log))
-        hosts = _unique(hosts)
-        seen_urls: set[str] = set()
-        for host in hosts:
-            for url in _candidate_esp32_camera_urls(host):
-                if url in seen_urls:
-                    continue
-                seen_urls.add(url)
-                probe = _probe_camera_url(url, timeout_s=self.settings.esp32_camera_probe_timeout_s)
-                if not probe["available"]:
-                    continue
-                camera_id = self._esp32_camera_id(url)
-                serial_port = _matching_serial_port_for_host(serial_ports, serial_logs, host)
-                label = f"ESP32-CAM {host}"
-                config = CameraConfig(
-                    camera_id=camera_id,
-                    enabled=True,
-                    auto_include=True,
-                    frequency_hz=1.0,
-                    label=label,
-                    source_url=url,
-                    serial_port=serial_port,
-                )
-                device = self.devices.get(camera_id)
-                if device is None:
-                    self.devices[camera_id] = CameraDevice(config, self.settings)
-                else:
-                    device.config.source_url = url
-                    device.config.serial_port = serial_port
-                    device.config.label = device.config.label or label
-                    device.config.enabled = True
-                    device.open_error = None
-                discovered.append(
-                    {
-                        "camera_id": camera_id,
-                        "available": True,
-                        "configured": True,
-                        "width": probe["width"],
-                        "height": probe["height"],
-                        "kind": "esp32-cam",
-                        "source_url": url,
-                        "serial_port": serial_port,
-                    }
-                )
-                break
-        for port in serial_ports:
-            discovered.append(
-                {
-                    "kind": "esp32-serial",
-                    "device": port["device"],
-                    "description": port.get("description"),
-                    "camera_found": any(item.get("serial_port") == port["device"] for item in discovered),
-                }
-            )
-        return discovered
-
-    @classmethod
-    def _esp32_camera_id(cls, key: str) -> int:
-        return cls.ESP32_CAMERA_ID_BASE - (zlib.crc32(key.encode("utf-8")) % cls.ESP32_CAMERA_ID_SPAN)
 
     def configure(self, camera_id: int, enabled: bool | None = None, auto_include: bool | None = None,
                   frequency_hz: float | None = None, label: str | None = None) -> dict[str, Any]:
@@ -397,193 +310,3 @@ class CameraManager:
     def shutdown(self) -> None:
         for device in self.devices.values():
             device.close()
-
-
-_IP_RE = re.compile(r"\b(?:https?://)?((?:\d{1,3}\.){3}\d{1,3}|[a-zA-Z0-9_.-]+\.local)(?::\d+)?(?:/[^\s\"']*)?\b")
-_ESPRESSIF_MAC_PREFIXES = (
-    "18:fe:34",
-    "24:0a:c4",
-    "24:58:7c",
-    "30:ae:a4",
-    "3c:61:05",
-    "7c:df:a1",
-    "84:f3:eb",
-    "c4:dd:57",
-    "e8:6b:ea",
-    "ec:64:c9",
-)
-_ESP32_USB_VIDS = {0x303A, 0x10C4, 0x1A86, 0x0403}
-
-
-def _unique(values: list[str]) -> list[str]:
-    seen: set[str] = set()
-    result: list[str] = []
-    for value in values:
-        normalized = value.strip()
-        if not normalized or normalized in seen:
-            continue
-        seen.add(normalized)
-        result.append(normalized)
-    return result
-
-
-def _esp32_serial_ports() -> list[dict[str, Any]]:
-    try:
-        from serial.tools import list_ports
-    except Exception:
-        return []
-    ports: list[dict[str, Any]] = []
-    for port in list_ports.comports():
-        text = " ".join(
-            str(value or "")
-            for value in (port.description, port.hwid, port.manufacturer, port.product)
-        ).lower()
-        vid = int(port.vid) if port.vid is not None else None
-        looks_like_esp32 = (
-            "espressif" in text
-            or "esp32" in text
-            or "usb jtag/serial" in text
-            or "ch340" in text
-            or "cp210" in text
-            or vid in _ESP32_USB_VIDS
-        )
-        if looks_like_esp32:
-            ports.append(
-                {
-                    "device": port.device,
-                    "description": port.description,
-                    "hwid": port.hwid,
-                    "vid": port.vid,
-                    "pid": port.pid,
-                    "serial_number": port.serial_number,
-                    "manufacturer": port.manufacturer,
-                    "product": port.product,
-                }
-            )
-    return ports
-
-
-def _read_serial_excerpt(device: str, timeout_s: float) -> str:
-    try:
-        import serial
-    except Exception:
-        return ""
-    try:
-        with serial.Serial(device, baudrate=115200, timeout=0.2, write_timeout=0.2) as ser:
-            try:
-                ser.dtr = False
-                ser.rts = False
-            except Exception:
-                pass
-            deadline = time.time() + max(0.1, timeout_s)
-            chunks: list[bytes] = []
-            while time.time() < deadline:
-                chunk = ser.read(512)
-                if chunk:
-                    chunks.append(chunk)
-                    if sum(len(item) for item in chunks) >= 4096:
-                        break
-            return b"".join(chunks).decode("utf-8", errors="ignore")
-    except Exception:
-        return ""
-
-
-def _hosts_from_text(text: str) -> list[str]:
-    hosts: list[str] = []
-    for match in _IP_RE.finditer(text):
-        raw = match.group(0)
-        if raw.startswith(("http://", "https://")):
-            parsed = urllib.parse.urlparse(raw)
-            if parsed.hostname:
-                hosts.append(parsed.hostname)
-        else:
-            hosts.append(raw.split("/", 1)[0].split(":", 1)[0])
-    return _unique(hosts)
-
-
-def _hosts_from_mdns() -> list[str]:
-    hosts: list[str] = []
-    for hostname in ("esp32cam.local", "esp32-cam.local", "espressif.local"):
-        try:
-            socket.getaddrinfo(hostname, None, proto=socket.IPPROTO_TCP)
-        except OSError:
-            continue
-        hosts.append(hostname)
-    return hosts
-
-
-def _hosts_from_neighbor_table() -> list[str]:
-    try:
-        result = subprocess.run(
-            ["ip", "neigh"],
-            check=False,
-            capture_output=True,
-            text=True,
-            timeout=2,
-        )
-    except Exception:
-        return []
-    hosts: list[str] = []
-    for line in result.stdout.splitlines():
-        lowered = line.lower()
-        if any(prefix in lowered for prefix in _ESPRESSIF_MAC_PREFIXES):
-            hosts.append(line.split()[0])
-    return hosts
-
-
-def _candidate_esp32_camera_urls(host_or_url: str) -> list[str]:
-    if host_or_url.startswith(("http://", "https://")):
-        parsed = urllib.parse.urlparse(host_or_url)
-        if parsed.path and parsed.path != "/":
-            return [host_or_url]
-        host = parsed.netloc
-        scheme = parsed.scheme
-    else:
-        host = host_or_url
-        scheme = "http"
-    return [
-        f"{scheme}://{host}:81/stream",
-        f"{scheme}://{host}/stream",
-        f"{scheme}://{host}/capture",
-        f"{scheme}://{host}:80/stream",
-        f"{scheme}://{host}:80/capture",
-    ]
-
-
-def _probe_camera_url(url: str, timeout_s: float) -> dict[str, Any]:
-    request = urllib.request.Request(url, headers={"User-Agent": "coffee-station/esp32-camera-discovery"})
-    try:
-        with urllib.request.urlopen(request, timeout=max(0.5, timeout_s)) as response:
-            content_type = response.headers.get("Content-Type", "").lower()
-            chunk = response.read(8192)
-    except (urllib.error.URLError, TimeoutError, OSError):
-        return {"available": False, "width": 0, "height": 0}
-    if "image" not in content_type and "multipart" not in content_type and b"\xff\xd8" not in chunk:
-        return {"available": False, "width": 0, "height": 0}
-    width = 0
-    height = 0
-    image = _extract_jpeg(chunk)
-    if image:
-        frame = cv2.imdecode(np.frombuffer(image, dtype=np.uint8), cv2.IMREAD_COLOR)
-        if frame is not None:
-            height, width = frame.shape[:2]
-    return {"available": True, "width": width, "height": height}
-
-
-def _extract_jpeg(data: bytes) -> bytes | None:
-    start = data.find(b"\xff\xd8")
-    end = data.find(b"\xff\xd9", start + 2)
-    if start < 0:
-        return None
-    if end < 0:
-        return data[start:]
-    return data[start:end + 2]
-
-
-def _matching_serial_port_for_host(serial_ports: list[dict[str, Any]], serial_logs: dict[str, str], host: str) -> str | None:
-    for device, log in serial_logs.items():
-        if host in log:
-            return device
-    if len(serial_ports) == 1:
-        return serial_ports[0]["device"]
-    return None

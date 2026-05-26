@@ -9,7 +9,7 @@ Coffee Station is a native desktop app for driving a Hugging Face LeRobot follow
 - Scheduled bundles of tool calls with per-call time offsets.
 - Queue inspection and cancellation for scheduled calls.
 - Multi-camera OpenCV capture with configurable automatic frame injection into the agent loop.
-- Camera scanning, including ESP32 camera HTTP streams, enable/disable, auto-feed frequency, and latest-frame requests.
+- Camera scanning, enable/disable, auto-feed frequency, and latest-frame requests.
 - Live camera display in the desktop window, capped by `CAMERA_FPS`.
 - Local session storage in SQLite.
 - Markerless monocular self-calibration for fitting arm geometry and camera extrinsics from synchronized joint/camera samples.
@@ -54,16 +54,6 @@ Camera display rate:
 
 ```bash
 export CAMERA_FPS=30
-```
-
-ESP32 camera boards should run the included HTTP camera firmware in
-`firmware/esp32-camera-streamer`. After flashing, use **Scan cameras** in the
-settings drawer; Coffee Station probes `esp32cam.local`, Espressif neighbor-table
-entries, serial logs, and any comma-separated `ESP32_CAMERA_HOSTS` values. A
-manual host can be a bare host/IP or a full stream URL:
-
-```bash
-export ESP32_CAMERA_HOSTS="esp32cam.local,192.168.4.1,http://192.168.1.50:81/stream"
 ```
 
 If LeRobot action keys cannot be inferred from `robot.action_features`, configure them explicitly in hardware order:

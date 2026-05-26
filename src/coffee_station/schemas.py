@@ -49,8 +49,6 @@ class CameraConfig(BaseModel):
     auto_include: bool = True
     frequency_hz: float = Field(default=1.0, ge=0.0, le=30.0)
     label: str | None = None
-    source_url: str | None = None
-    serial_port: str | None = None
     kind: Literal["physical", "virtual"] = "physical"
     agent_visible: bool = True
 
