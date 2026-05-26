@@ -1,5 +1,11 @@
 # Coffee Station
 
+## Repository status
+
+This repository state is frozen. Future active development has moved to
+[JacobFV/phys-0](https://github.com/JacobFV/phys-0); use that repository for
+new work, fixes, and current project direction.
+
 Coffee Station is a native desktop app for driving a Hugging Face LeRobot follower arm with a Gemini agent. It runs as a single window on macOS, Linux, and Windows — no browser, no server to manage.
 
 ## What it does
